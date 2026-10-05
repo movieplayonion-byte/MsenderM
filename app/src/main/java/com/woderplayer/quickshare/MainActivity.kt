@@ -251,7 +251,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val buffer = ByteArray(64 * 1024)
-                var bytesRead: Int
+                var bytesRead = 0
                 var totalSent = 0L
 
                 while (input.read(buffer).also { bytesRead = it } != -1) {
@@ -309,10 +309,12 @@ class MainActivity : AppCompatActivity() {
 
                 val out = FileOutputStream(destFile)
                 val buffer = ByteArray(64 * 1024)
-                var bytesRead: Int
+                var bytesRead = 0
                 var totalReceived = 0L
 
-                while (totalReceived < fileSize && inStream.read(buffer).also { bytesRead = it } != -1) {
+                while (totalReceived < fileSize) {
+                    bytesRead = inStream.read(buffer)
+                    if (bytesRead == -1) break
                     out.write(buffer, 0, bytesRead)
                     totalReceived += bytesRead
                     val progress = ((totalReceived * 100) / fileSize).toInt()
