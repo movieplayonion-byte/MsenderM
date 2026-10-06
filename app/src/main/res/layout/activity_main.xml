@@ -1,34 +1,124 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:background="#10141D" android:layout_height="match_parent" android:layout_width="match_parent" android:orientation="vertical" android:padding="16dp" xmlns:android="http://schemas.android.com/apk/res/android">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#10141D"
+    android:orientation="vertical"
+    android:padding="16dp">
 
-    <!-- Header -->
-    <TextView android:layout_gravity="center" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:layout_width="wrap_content" android:text="MsenderM" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginBottom="4dp"
+        android:text="MsenderM"
+        android:textColor="#FFFFFF"
+        android:textSize="24sp"
+        android:textStyle="bold" />
 
-    <TextView android:gravity="center" android:id="@+id/tvStatus" android:layout_height="wrap_content" android:layout_marginBottom="16dp" android:layout_width="match_parent" android:text="Ready to transfer" android:textColor="#00E676" android:textSize="13sp"/>
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:gravity="center"
+        android:text="Ready: Select files or apps"
+        android:textColor="#00E676"
+        android:textSize="13sp" />
 
-    <!-- Big Action Buttons -->
-    <LinearLayout android:layout_height="wrap_content" android:layout_marginBottom="16dp" android:layout_width="match_parent" android:orientation="horizontal" android:weightSum="2">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:orientation="horizontal"
+        android:weightSum="2">
 
-        <Button android:backgroundTint="#00C853" android:id="@+id/btnSend" android:layout_height="56dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:layout_width="0dp" android:text="SEND" android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold"/>
+        <Button
+            android:id="@+id/btnSend"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:backgroundTint="#00C853"
+            android:text="SEND"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
-        <Button android:backgroundTint="#2979FF" android:id="@+id/btnReceive" android:layout_height="56dp" android:layout_marginStart="6dp" android:layout_weight="1" android:layout_width="0dp" android:text="RECEIVE" android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold"/>
+        <Button
+            android:id="@+id/btnReceive"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:backgroundTint="#2979FF"
+            android:text="RECEIVE"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- File Picker Quick Action -->
-    <Button android:backgroundTint="#212936" android:id="@+id/btnPickCustomFile" android:layout_height="wrap_content" android:layout_marginBottom="12dp" android:layout_width="match_parent" android:text="PICK FILES FROM STORAGE" android:textColor="#90CAF9"/>
+    <Button
+        android:id="@+id/btnPickCustomFile"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:backgroundTint="#212936"
+        android:text="PICK MULTIPLE FILES"
+        android:textColor="#90CAF9" />
 
-    <!-- Transfer Info / QR Box -->
-    <LinearLayout android:background="#1A2230" android:gravity="center" android:id="@+id/qrContainer" android:layout_height="wrap_content" android:layout_marginBottom="12dp" android:layout_width="match_parent" android:orientation="vertical" android:padding="12dp" android:visibility="gone">
+    <LinearLayout
+        android:id="@+id/qrContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:background="#1A2230"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone">
 
-        <TextView android:layout_height="wrap_content" android:layout_marginBottom="8dp" android:layout_width="wrap_content" android:text="Receiver: Scan this QR to Connect" android:textColor="#FFFFFF" android:textSize="14sp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="Receiver: Scan QR to Connect"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
 
-        <ImageView android:background="#FFFFFF" android:id="@+id/ivQrCode" android:layout_height="200dp" android:layout_width="200dp" android:padding="8dp"/>
+        <ImageView
+            android:id="@+id/ivQrCode"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:background="#FFFFFF"
+            android:padding="8dp" />
     </LinearLayout>
 
-    <ProgressBar android:id="@+id/progressBar" android:layout_height="8dp" android:layout_marginBottom="8dp" android:layout_width="match_parent" android:progressTint="#00E676" android:visibility="gone" style="?android:attr/progressBarStyleHorizontal"/>
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:layout_marginBottom="8dp"
+        android:progressTint="#00E676"
+        android:visibility="gone" />
 
-    <TextView android:layout_height="wrap_content" android:layout_marginBottom="6dp" android:layout_width="wrap_content" android:text="Select App to Share APK:" android:textColor="#9E9E9E" android:textSize="13sp"/>
+    <TextView
+        android:id="@+id/tvSelectedCount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="6dp"
+        android:text="Selected: 0 items"
+        android:textColor="#9E9E9E"
+        android:textSize="13sp" />
 
-    <ListView android:divider="#1E2738" android:dividerHeight="1dp" android:id="@+id/lvApps" android:layout_height="0dp" android:layout_weight="1" android:layout_width="match_parent"/>
+    <ListView
+        android:id="@+id/lvApps"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:choiceMode="multipleChoice"
+        android:divider="#1E2738"
+        android:dividerHeight="1dp" />
 
 </LinearLayout>

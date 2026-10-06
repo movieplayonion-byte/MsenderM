@@ -8,31 +8,35 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.net.Uri
+import android.location.LocationManager
+import android.net.*
+import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
+import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.view.View
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import java.io.*
-import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.net.Socket
+import java.net.*
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var tvStatus: TextView
+    private lateinit var tvSelectedCount: TextView
     private lateinit var lvApps: ListView
     private lateinit var btnSend: Button
     private lateinit var btnReceive: Button
@@ -41,35 +45,43 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ivQrCode: ImageView
     private lateinit var progressBar: ProgressBar
 
-    private var selectedFile: File? = null
-    private var selectedUri: Uri? = null
-    private var selectedFileName: String = ""
-    private var selectedFileSize: Long = 0
-
+    data class TransferItem(val name: String, val size: Long, val file: File? = null, val uri: Uri? = null)
+    private val selectedItems = mutableListOf<TransferItem>()
     private val TRANSFER_PORT = 9876
+    private var activeServerSocket: ServerSocket? = null
     private var hotspotReservation: WifiManager.LocalOnlyHotspotReservation? = null
 
     data class AppItem(val name: String, val packageName: String, val apkPath: String)
+    private val installedApps = mutableListOf<AppItem>()
 
-    private val filePickerLauncher = registerForActivityResult(
+    private var activeDialog: BottomSheetDialog? = null
+    private var isPrepForSender = true
+    private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
+
+    private val multiFilePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            result.data?.data?.let { uri ->
-                selectedUri = uri
-                selectedFile = null
-                getUriDetails(uri)
-                tvStatus.text = "Selected: $selectedFileName (${selectedFileSize / 1024} KB)"
-                Toast.makeText(this, "Ready: $selectedFileName", Toast.LENGTH_SHORT).show()
+            val data = result.data
+            var count = 0
+            if (data?.clipData != null) {
+                val clip = data.clipData!!
+                for (i in 0 until clip.itemCount) {
+                    addItemFromUri(clip.getItemAt(i).uri)
+                    count++
+                }
+            } else if (data?.data != null) {
+                addItemFromUri(data.data!!)
+                count++
             }
+            updateSelectionStatus()
+            Toast.makeText(this, "Added $count file(s)", Toast.LENGTH_SHORT).show()
         }
     }
 
     private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
         if (result.contents != null) {
-            val qrData = result.contents
-            tvStatus.text = "Connecting to sender..."
-            connectAndReceiveFile(qrData)
+            handleReceivedQr(result.contents)
         }
     }
 
@@ -78,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         tvStatus = findViewById(R.id.tvStatus)
+        tvSelectedCount = findViewById(R.id.tvSelectedCount)
         lvApps = findViewById(R.id.lvApps)
         btnSend = findViewById(R.id.btnSend)
         btnReceive = findViewById(R.id.btnReceive)
@@ -86,89 +99,196 @@ class MainActivity : AppCompatActivity() {
         ivQrCode = findViewById(R.id.ivQrCode)
         progressBar = findViewById(R.id.progressBar)
 
-        checkPermissions()
         loadInstalledApps()
 
         btnPickCustomFile.setOnClickListener {
             val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
                 type = "*/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
                 addCategory(Intent.CATEGORY_OPENABLE)
             }
-            filePickerLauncher.launch(Intent.createChooser(intent, "Choose File to Send"))
+            multiFilePickerLauncher.launch(Intent.createChooser(intent, "Select Files"))
         }
 
         btnSend.setOnClickListener {
-            if (selectedFile == null && selectedUri == null) {
-                Toast.makeText(this, "Select an app or file first!", Toast.LENGTH_SHORT).show()
+            if (selectedItems.isEmpty()) {
+                Toast.makeText(this, "Select files/apps first!", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            startSenderMode()
+            isPrepForSender = true
+            showPreparationsDialog(true)
         }
 
         btnReceive.setOnClickListener {
-            val options = ScanOptions().apply {
-                setPrompt("Scan Sender's MsenderM QR Code")
-                setBeepEnabled(true)
-                setOrientationLocked(true)
-                captureActivity = com.journeyapps.barcodescanner.CaptureActivity::class.java
-            }
-            qrScannerLauncher.launch(options)
+            isPrepForSender = false
+            showPreparationsDialog(false)
         }
     }
 
-    private fun checkPermissions() {
-        val permissions = mutableListOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
-            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
-            permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
-            permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
+    private fun handleReceivedQr(qrData: String) {
+        val parts = qrData.split("|")
+        if (parts.size < 5 || parts[0] != "MSENDER") {
+            Toast.makeText(this, "Invalid QR Code!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val ssid = parts[1]
+        val password = parts[2]
+        val targetIp = parts[3]
+        val targetPort = parts[4].toIntOrNull() ?: TRANSFER_PORT
+
+        if (ssid == "MANUAL" || ssid.isEmpty()) {
+            connectAndReceiveBatch(targetIp, targetPort, null)
+            return
+        }
+
+        tvStatus.text = "Connecting to $ssid..."
+        connectToSenderWifi(ssid, password) { network ->
+            connectAndReceiveBatch(targetIp, targetPort, network)
+        }
+    }
+
+    private fun connectToSenderWifi(ssid: String, pass: String, onConnected: (Network?) -> Unit) {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val specifier = if (pass.isNotEmpty()) {
+                WifiNetworkSpecifier.Builder().setSsid(ssid).setWpa2Passphrase(pass).build()
+            } else {
+                WifiNetworkSpecifier.Builder().setSsid(ssid).build()
+            }
+
+            val request = NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .setNetworkSpecifier(specifier)
+                .build()
+
+            connectivityCallback?.let { try { cm.unregisterNetworkCallback(it) } catch (_: Exception) {} }
+
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    super.onAvailable(network)
+                    cm.bindProcessToNetwork(network)
+                    runOnUiThread { tvStatus.text = "Connected! Starting transfer..." }
+                    onConnected(network)
+                }
+
+                override fun onUnavailable() {
+                    super.onUnavailable()
+                    runOnUiThread { tvStatus.text = "Connect to $ssid manually in Wi-Fi settings" }
+                    onConnected(null)
+                }
+            }
+            connectivityCallback = callback
+            cm.requestNetwork(request, callback, 15000)
         } else {
-            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
-        val needed = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (needed.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, needed.toTypedArray(), 101)
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            wm.disconnect()
+            val conf = WifiConfiguration().apply {
+                SSID = "\"$ssid\""
+                if (pass.isNotEmpty()) preSharedKey = "\"$pass\"" else allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE)
+            }
+            val netId = wm.addNetwork(conf)
+            wm.enableNetwork(netId, true)
+            wm.reconnect()
+            Thread.sleep(3000)
+            onConnected(null)
         }
     }
 
-    private fun loadInstalledApps() {
-        val pm = packageManager
-        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        val appList = mutableListOf<AppItem>()
+    private fun showPreparationsDialog(forSender: Boolean) {
+        val dialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.dialog_preparations, null)
+        dialog.setContentView(view)
+        activeDialog = dialog
 
-        for (app in apps) {
-            if ((app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || app.packageName == packageName) {
-                val label = pm.getApplicationLabel(app).toString()
-                appList.add(AppItem(label, app.packageName, app.sourceDir))
+        val tvWlanTitle = view.findViewById<TextView>(R.id.tvWlanTitle)
+        val btnFixWlan = view.findViewById<Button>(R.id.btnFixWlan)
+        val btnFixGps = view.findViewById<Button>(R.id.btnFixGps)
+        val btnFixPerm = view.findViewById<Button>(R.id.btnFixPerm)
+        val btnPrepNext = view.findViewById<Button>(R.id.btnPrepNext)
+
+        if (forSender) {
+            tvWlanTitle.text = "Open Hotspot (Portable AP)"
+            btnFixWlan.setOnClickListener { startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS)) }
+        } else {
+            tvWlanTitle.text = "Enable Wi-Fi"
+            btnFixWlan.setOnClickListener { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
+        }
+
+        btnFixGps.setOnClickListener { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+        btnFixPerm.setOnClickListener { requestMissingPermissions() }
+
+        btnPrepNext.setOnClickListener {
+            dialog.dismiss()
+            if (forSender) {
+                startSenderMode()
+            } else {
+                val options = ScanOptions().apply {
+                    setPrompt("Scan Sender QR Code")
+                    setBeepEnabled(true)
+                    setOrientationLocked(true)
+                    captureActivity = com.journeyapps.barcodescanner.CaptureActivity::class.java
+                }
+                qrScannerLauncher.launch(options)
             }
         }
 
-        val adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_list_item_2,
-            android.R.id.text1,
-            appList.map { "${it.name}\n${it.packageName}" }
-        )
-        lvApps.adapter = adapter
+        refreshDialogStatus(dialog, forSender)
+        dialog.show()
+    }
 
-        lvApps.setOnItemClickListener { _, _, position, _ ->
-            val selected = appList[position]
-            val f = File(selected.apkPath)
-            selectedFile = f
-            selectedUri = null
-            selectedFileName = "${selected.name.replace(" ", "_")}.apk"
-            selectedFileSize = f.length()
-            tvStatus.text = "Selected: $selectedFileName (${selectedFileSize / 1024} KB)"
-            Toast.makeText(this, "Selected APK: ${selected.name}", Toast.LENGTH_SHORT).show()
+    private fun refreshDialogStatus(dialog: BottomSheetDialog, forSender: Boolean) {
+        val iconWlan = dialog.findViewById<TextView>(R.id.iconWlan) ?: return
+        val iconGps = dialog.findViewById<TextView>(R.id.iconGps) ?: return
+        val iconPerm = dialog.findViewById<TextView>(R.id.iconPerm) ?: return
+        val btnPrepNext = dialog.findViewById<Button>(R.id.btnPrepNext) ?: return
+
+        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+        val wlanOk = if (forSender) true else wm.isWifiEnabled
+        val gpsOk = lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        val permOk = checkAllPermissionsGranted()
+
+        iconWlan.text = if (wlanOk) "✔" else "●"
+        iconWlan.setTextColor(Color.parseColor(if (wlanOk) "#00E676" else "#FF5252"))
+        iconGps.text = if (gpsOk) "✔" else "●"
+        iconGps.setTextColor(Color.parseColor(if (gpsOk) "#00E676" else "#FF5252"))
+        iconPerm.text = if (permOk) "✔" else "●"
+        iconPerm.setTextColor(Color.parseColor(if (permOk) "#00E676" else "#FF5252"))
+
+        val allReady = wlanOk && gpsOk && permOk
+        btnPrepNext.isEnabled = allReady
+        btnPrepNext.setBackgroundColor(Color.parseColor(if (allReady) "#00E676" else "#333D4E"))
+        btnPrepNext.setTextColor(Color.parseColor(if (allReady) "#000000" else "#888888"))
+    }
+
+    private fun checkAllPermissionsGranted(): Boolean {
+        val list = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            list.add(Manifest.permission.READ_MEDIA_IMAGES)
+            list.add(Manifest.permission.READ_MEDIA_VIDEO)
+        } else {
+            list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            list.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
+        return list.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
+    }
+
+    private fun requestMissingPermissions() {
+        val list = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            list.add(Manifest.permission.READ_MEDIA_IMAGES)
+            list.add(Manifest.permission.READ_MEDIA_VIDEO)
+        } else {
+            list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            list.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        ActivityCompat.requestPermissions(this, list.toTypedArray(), 101)
     }
 
     private fun startSenderMode() {
@@ -182,94 +302,86 @@ class MainActivity : AppCompatActivity() {
                         hotspotReservation = reservation
                         val config = reservation.wifiConfiguration
                         val ssid = config?.SSID ?: "MsenderM_Hotspot"
-                        val password = config?.preSharedKey ?: ""
+                        val pass = config?.preSharedKey ?: ""
                         val ip = "192.168.43.1"
 
-                        val qrPayload = "MSENDER|$ssid|$password|$ip|$TRANSFER_PORT"
+                        val qrPayload = "MSENDER|$ssid|$pass|$ip|$TRANSFER_PORT"
                         showQrCode(qrPayload)
                         startSocketSenderServer()
                     }
 
                     override fun onFailed(reason: Int) {
                         super.onFailed(reason)
-                        startManualHotspotFallback()
+                        fallbackSenderManual()
                     }
                 }, null)
             } catch (e: Exception) {
-                startManualHotspotFallback()
+                fallbackSenderManual()
             }
         } else {
-            startManualHotspotFallback()
+            fallbackSenderManual()
         }
     }
 
-    private fun startManualHotspotFallback() {
+    private fun fallbackSenderManual() {
         val ip = "192.168.43.1"
         val qrPayload = "MSENDER|MANUAL||$ip|$TRANSFER_PORT"
         showQrCode(qrPayload)
         startSocketSenderServer()
-        Toast.makeText(this, "Please enable phone Hotspot manually", Toast.LENGTH_LONG).show()
-    }
-
-    private fun showQrCode(content: String) {
-        val writer = QRCodeWriter()
-        val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, 512, 512)
-        val width = bitMatrix.width
-        val height = bitMatrix.height
-        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-        for (x in 0 until width) {
-            for (y in 0 until height) {
-                bmp.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
-            }
-        }
-        runOnUiThread {
-            ivQrCode.setImageBitmap(bmp)
-            qrContainer.visibility = View.VISIBLE
-            tvStatus.text = "Hotspot active! Ask receiver to scan QR."
-        }
+        Toast.makeText(this, "Hotspot active! Keep hotspot ON.", Toast.LENGTH_LONG).show()
     }
 
     private fun startSocketSenderServer() {
+        try { activeServerSocket?.close() } catch (_: Exception) {}
+
         thread {
             try {
-                val serverSocket = ServerSocket(TRANSFER_PORT)
-                val socket = serverSocket.accept()
+                val server = ServerSocket()
+                server.reuseAddress = true
+                server.bind(InetSocketAddress(TRANSFER_PORT))
+                activeServerSocket = server
+
+                runOnUiThread { tvStatus.text = "Sender Ready!\nWaiting for receiver..." }
+
+                val client = server.accept()
+                val totalBatch = selectedItems.size
 
                 runOnUiThread {
-                    tvStatus.text = "Receiver connected! Sending $selectedFileName..."
+                    tvStatus.text = "Sending $totalBatch item(s)..."
                     progressBar.visibility = View.VISIBLE
                 }
 
-                val out = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
-                out.writeUTF(selectedFileName)
-                out.writeLong(selectedFileSize)
+                val out = DataOutputStream(BufferedOutputStream(client.getOutputStream()))
+                out.writeInt(totalBatch)
 
-                val input: InputStream = if (selectedFile != null) {
-                    FileInputStream(selectedFile!!)
-                } else {
-                    contentResolver.openInputStream(selectedUri!!)!!
+                for ((idx, item) in selectedItems.withIndex()) {
+                    runOnUiThread { tvStatus.text = "Sending [${idx + 1}/$totalBatch]: ${item.name}" }
+                    out.writeUTF(item.name)
+                    out.writeLong(item.size)
+
+                    val stream: InputStream = if (item.file != null) FileInputStream(item.file) else contentResolver.openInputStream(item.uri!!)!!
+                    val buffer = ByteArray(64 * 1024)
+                    var read = 0
+                    var sent = 0L
+
+                    while (stream.read(buffer).also { read = it } != -1) {
+                        out.write(buffer, 0, read)
+                        sent += read
+                        val prog = if (item.size > 0) ((sent * 100) / item.size).toInt() else 0
+                        runOnUiThread { progressBar.progress = prog }
+                    }
+                    out.flush()
+                    stream.close()
                 }
 
-                val buffer = ByteArray(64 * 1024)
-                var bytesRead = 0
-                var totalSent = 0L
-
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    out.write(buffer, 0, bytesRead)
-                    totalSent += bytesRead
-                    val progress = ((totalSent * 100) / selectedFileSize).toInt()
-                    runOnUiThread { progressBar.progress = progress }
-                }
-
-                out.flush()
-                input.close()
-                socket.close()
-                serverSocket.close()
+                client.close()
+                server.close()
+                activeServerSocket = null
 
                 runOnUiThread {
-                    tvStatus.text = "Transfer completed successfully!"
+                    tvStatus.text = "All items sent successfully!"
                     progressBar.visibility = View.GONE
-                    Toast.makeText(this@MainActivity, "File Sent!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "Files Sent!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -280,55 +392,64 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun connectAndReceiveFile(qrData: String) {
-        val parts = qrData.split("|")
-        if (parts.size < 5 || parts[0] != "MSENDER") {
-            Toast.makeText(this, "Invalid MsenderM QR Code!", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val targetIp = parts[3]
-        val targetPort = parts[4].toIntOrNull() ?: TRANSFER_PORT
-
+    private fun connectAndReceiveBatch(targetIp: String, targetPort: Int, network: Network?) {
         thread {
             try {
                 runOnUiThread {
-                    tvStatus.text = "Connecting to $targetIp:$targetPort..."
+                    tvStatus.text = "Connecting to sender socket..."
                     progressBar.visibility = View.VISIBLE
                 }
 
-                val socket = Socket()
-                socket.connect(InetSocketAddress(targetIp, targetPort), 10000)
-
-                val inStream = DataInputStream(BufferedInputStream(socket.getInputStream()))
-                val fileName = inStream.readUTF()
-                val fileSize = inStream.readLong()
-
-                val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val destFile = File(downloadDir, "MsenderM_$fileName")
-
-                val out = FileOutputStream(destFile)
-                val buffer = ByteArray(64 * 1024)
-                var bytesRead = 0
-                var totalReceived = 0L
-
-                while (totalReceived < fileSize) {
-                    bytesRead = inStream.read(buffer)
-                    if (bytesRead == -1) break
-                    out.write(buffer, 0, bytesRead)
-                    totalReceived += bytesRead
-                    val progress = ((totalReceived * 100) / fileSize).toInt()
-                    runOnUiThread { progressBar.progress = progress }
+                val socket = if (network != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    val s = network.socketFactory.createSocket()
+                    s.connect(InetSocketAddress(targetIp, targetPort), 10000)
+                    s
+                } else {
+                    val s = Socket()
+                    s.connect(InetSocketAddress(targetIp, targetPort), 10000)
+                    s
                 }
 
-                out.flush()
-                out.close()
-                socket.close()
+                val inStream = DataInputStream(BufferedInputStream(socket.getInputStream()))
+                val totalBatch = inStream.readInt()
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
 
+                for (i in 0 until totalBatch) {
+                    val rawName = inStream.readUTF()
+                    val size = inStream.readLong()
+
+                    runOnUiThread { tvStatus.text = "Receiving [${i + 1}/$totalBatch]: $rawName" }
+
+                    var destFile = File(dir, "MsenderM_$rawName")
+                    var counter = 1
+                    while (destFile.exists()) {
+                        destFile = File(dir, "MsenderM_${counter}_$rawName")
+                        counter++
+                    }
+
+                    val out = FileOutputStream(destFile)
+                    val buffer = ByteArray(64 * 1024)
+                    var read = 0
+                    var received = 0L
+
+                    while (received < size) {
+                        val toRead = Math.min(buffer.size.toLong(), size - received).toInt()
+                        read = inStream.read(buffer, 0, toRead)
+                        if (read == -1) break
+                        out.write(buffer, 0, read)
+                        received += read
+                        val prog = if (size > 0) ((received * 100) / size).toInt() else 0
+                        runOnUiThread { progressBar.progress = prog }
+                    }
+                    out.flush()
+                    out.close()
+                }
+
+                socket.close()
                 runOnUiThread {
-                    tvStatus.text = "Received: ${destFile.name}\nSaved to Downloads"
+                    tvStatus.text = "All items received in Downloads!"
                     progressBar.visibility = View.GONE
-                    Toast.makeText(this@MainActivity, "Saved to Downloads/${destFile.name}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "Received successfully!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -339,19 +460,64 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun getUriDetails(uri: Uri) {
-        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-            if (cursor.moveToFirst()) {
-                selectedFileName = cursor.getString(nameIndex) ?: "file"
-                selectedFileSize = cursor.getLong(sizeIndex)
+    private fun showQrCode(content: String) {
+        val bitMatrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, 512, 512)
+        val bmp = Bitmap.createBitmap(512, 512, Bitmap.Config.RGB_565)
+        for (x in 0 until 512) {
+            for (y in 0 until 512) {
+                bmp.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
             }
+        }
+        runOnUiThread {
+            ivQrCode.setImageBitmap(bmp)
+            qrContainer.visibility = View.VISIBLE
+        }
+    }
+
+    private fun addItemFromUri(uri: Uri) {
+        contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val nIdx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            val sIdx = c.getColumnIndex(OpenableColumns.SIZE)
+            if (c.moveToFirst()) {
+                selectedItems.add(TransferItem(c.getString(nIdx) ?: "file", c.getLong(sIdx), uri = uri))
+            }
+        }
+    }
+
+    private fun updateSelectionStatus() {
+        val totalMb = selectedItems.sumOf { it.size } / (1024 * 1024)
+        tvSelectedCount.text = "Selected: ${selectedItems.size} items (~$totalMb MB)"
+    }
+
+    private fun loadInstalledApps() {
+        val pm = packageManager
+        installedApps.clear()
+        for (app in pm.getInstalledApplications(PackageManager.GET_META_DATA)) {
+            if ((app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || app.packageName == packageName) {
+                installedApps.add(AppItem(pm.getApplicationLabel(app).toString(), app.packageName, app.sourceDir))
+            }
+        }
+        lvApps.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_multiple_choice, installedApps.map { it.name })
+        lvApps.setOnItemClickListener { _, _, pos, _ ->
+            val item = installedApps[pos]
+            val f = File(item.apkPath)
+            val name = "${item.name.replace(" ", "_")}.apk"
+            if (lvApps.isItemChecked(pos)) {
+                selectedItems.add(TransferItem(name, f.length(), file = f))
+            } else {
+                selectedItems.removeAll { it.name == name }
+            }
+            updateSelectionStatus()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        try { activeServerSocket?.close() } catch (_: Exception) {}
         hotspotReservation?.close()
+        connectivityCallback?.let {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            try { cm.unregisterNetworkCallback(it) } catch (_: Exception) {}
+        }
     }
 }
