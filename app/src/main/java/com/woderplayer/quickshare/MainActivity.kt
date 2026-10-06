@@ -515,33 +515,5 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         try { activeServerSocket?.close() } catch (_: Exception) {}
         hotspotReservation?.close()
-        connectivityCallback?.let {
-            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            try { cm.unregisterNetworkCallback(it) } catch (_: Exception) {}
-        }
-    }
-}
-s and ApplicationInfo.FLAG_SYSTEM) == 0 || app.packageName == packageName) {
-                installedApps.add(AppItem(pm.getApplicationLabel(app).toString(), app.packageName, app.sourceDir))
-            }
-        }
-        lvApps.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_multiple_choice, installedApps.map { it.name })
-        lvApps.setOnItemClickListener { _, _, pos, _ ->
-            val item = installedApps[pos]
-            val f = File(item.apkPath)
-            val name = "${item.name.replace(" ", "_")}.apk"
-            if (lvApps.isItemChecked(pos)) {
-                selectedItems.add(TransferItem(name, f.length(), file = f))
-            } else {
-                selectedItems.removeAll { it.name == name }
-            }
-            updateSelectionStatus()
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        try { activeServerSocket?.close() } catch (_: Exception) {}
-        hotspotReservation?.close()
     }
 }
