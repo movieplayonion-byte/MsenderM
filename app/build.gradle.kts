@@ -62,6 +62,9 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
+    // Timber Logging
+    implementation("com.jakewharton.timber:timber:5.0.1")
+
     // QR Code Engine
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
@@ -75,6 +78,6 @@ dependencies {
     implementation("io.ktor:ktor-server-call-logging-jvm:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:$ktorVersion")
 
-    // Fast HTTP Client for Sender (App-to-App transfer)
+    // HTTP Client for Sender
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

@@ -22,12 +22,14 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.woderplayer.quickshare.server.FileServerService
-import com.woderplayer.quickshare.server.NetworkHelper
+import com.woderplayer.quickshare.util.Constants
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.IOException
+import java.net.NetworkInterface
+import java.util.Collections
 
 data class TransferItem(val name: String, val size: Long, val file: File? = null, val uri: Uri? = null)
 data class AppItem(val name: String, val packageName: String, val apkPath: String)
@@ -127,9 +129,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun getDeviceIpAddress(): String {
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (intf in interfaces) {
+                val addrs = Collections.list(intf.inetAddresses)
+                for (addr in addrs) {
+                    if (!addr.isLoopbackAddress) {
+                        val host = addr.hostAddress ?: ""
+                        val isIPv4 = host.indexOf(':') < 0
+                        if (isIPv4) return host
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return "127.0.0.1"
+    }
+
     private fun startReceiverMode() {
         val serviceIntent = Intent(this, FileServerService::class.java).apply {
-            action = FileServerService.ACTION_START_SERVER
+            action = Constants.ACTION_START_SERVICE
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
@@ -137,7 +156,7 @@ class MainActivity : AppCompatActivity() {
             startService(serviceIntent)
         }
 
-        val localIp = NetworkHelper.getLocalIpAddress(this) ?: "127.0.0.1"
+        val localIp = getDeviceIpAddress()
         val port = 8080
         val qrPayload = "MSENDER|http://$localIp:$port"
 
@@ -151,7 +170,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             payload
         }
-
         uploadFilesToReceiver("$targetUrl/upload")
     }
 
@@ -279,7 +297,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         val serviceIntent = Intent(this, FileServerService::class.java).apply {
-            action = FileServerService.ACTION_STOP_SERVER
+            action = Constants.ACTION_STOP_SERVICE
         }
         stopService(serviceIntent)
     }
