@@ -20,10 +20,6 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.install
 import io.ktor.server.application.log
-import io.ktor.server.auth.Authentication
-import io.ktor.server.auth.UserIdPrincipal
-import io.ktor.server.auth.authenticate
-import io.ktor.server.auth.basic
 import io.ktor.server.http.content.CompressedFileType
 import io.ktor.server.http.content.resolveResource
 import io.ktor.server.http.content.staticResources
@@ -344,22 +340,7 @@ fun Application.ktorServer(
         anyHost()
         allowCredentials = true
     }
-    install(Authentication) {
-        basic("auth-basic") {
-            realm = applicationContext.getString(R.string.app_name)
-            validate { credentials ->
-                if (fileServerService.isPasswordProtectionEnabled()) {
-                    if (fileServerService.checkPassword(credentials.password)) {
-                        UserIdPrincipal(credentials.name)
-                    } else {
-                        null
-                    }
-                } else {
-                    UserIdPrincipal(credentials.name)
-                }
-            }
-        }
-    }
+    
     install(IpAddressApprovalPlugin)
     install(ContentNegotiation) { json() }
 
@@ -370,7 +351,7 @@ fun Application.ktorServer(
             default("index.html")
         }
 
-        authenticate("auth-basic", optional = !fileServerService.isPasswordProtectionEnabled()) {
+        
             get("/") {
                 val isCurl = call.attributes.getOrNull(IsCurlRequestKey) == true
                 if (isCurl) {
@@ -388,7 +369,6 @@ fun Application.ktorServer(
                         "UI not found (index.html missing in assets)."
                     )
                 }
-            }
 
             route("/api") {
                 get("/ping") {
