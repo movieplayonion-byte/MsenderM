@@ -432,7 +432,7 @@ class FileServerService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         return NotificationCompat.Builder(this, Constants.NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title).setContentText(text).setSmallIcon(R.drawable.ic_stat_name)
             .setContentIntent(pendingIntent).setOngoing(true)
-            .addAction(R.drawable.ic_stop_black, getString(R.string.stop_server), stopPendingIntent)
+            .addAction(android.R.drawable.ic_media_pause, getString(R.string.stop_server), stopPendingIntent)
             .build()
     }
 
