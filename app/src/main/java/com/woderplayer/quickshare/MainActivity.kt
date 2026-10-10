@@ -25,9 +25,10 @@ import com.woderplayer.quickshare.engine.NetworkUtils
 import com.woderplayer.quickshare.engine.TransferReceiverService
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import java.io.File
-import java.io.IOException
+import java.io.InputStream
+import java.net.URLEncoder
 
 data class TransferItem(val name: String, val size: Long, val file: File? = null, val uri: Uri? = null)
 data class AppItem(val name: String, val packageName: String, val apkPath: String)
@@ -42,11 +43,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPickCustomFile: Button
     private lateinit var qrContainer: View
     private lateinit var ivQrCode: ImageView
-    private lateinit var progressBar: ProgressBar
+    private lateinit var progressContainer: View
+    private lateinit var tvCurrentTransferFile: TextView
+    private lateinit var tvTransferSpeed: TextView
+    private lateinit var tvTransferPercent: TextView
+    private lateinit var transferProgressBar: ProgressBar
 
     private val selectedItems = mutableListOf<TransferItem>()
     private val installedApps = mutableListOf<AppItem>()
-    private val httpClient = OkHttpClient()
+    private val httpClient = OkHttpClient.Builder().build()
 
     private val multiFilePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -87,9 +92,21 @@ class MainActivity : AppCompatActivity() {
         btnPickCustomFile = findViewById(R.id.btnPickCustomFile)
         qrContainer = findViewById(R.id.qrContainer)
         ivQrCode = findViewById(R.id.ivQrCode)
-        progressBar = findViewById(R.id.progressBar)
+        progressContainer = findViewById(R.id.progressContainer)
+        tvCurrentTransferFile = findViewById(R.id.tvCurrentTransferFile)
+        tvTransferSpeed = findViewById(R.id.tvTransferSpeed)
+        tvTransferPercent = findViewById(R.id.tvTransferPercent)
+        transferProgressBar = findViewById(R.id.transferProgressBar)
 
         loadInstalledApps()
+
+        TransferReceiverService.onFileReceivedListener = { fileName, size ->
+            runOnUiThread {
+                val mb = String.format("%.2f", size / (1024.0 * 1024.0))
+                tvStatus.text = "Received: $fileName ($mb MB)\nSaved in Downloads/MsenderM"
+                Toast.makeText(this, "Received: $fileName", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         btnPickCustomFile.setOnClickListener {
             val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -102,7 +119,7 @@ class MainActivity : AppCompatActivity() {
 
         btnSend.setOnClickListener {
             if (selectedItems.isEmpty()) {
-                Toast.makeText(this, "Select files/apps first!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Pehle files ya apps select karo!", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             if (!checkAllPermissionsGranted()) {
@@ -110,7 +127,7 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             val options = ScanOptions().apply {
-                setPrompt("Scan Receiver QR Code")
+                setPrompt("Receiver ka QR Code Scan karo")
                 setBeepEnabled(true)
                 setOrientationLocked(true)
                 captureActivity = com.journeyapps.barcodescanner.CaptureActivity::class.java
@@ -128,38 +145,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startReceiverEngine() {
-        val ip = try {
-            NetworkUtils.getLocalIp()
-        } catch (e: Exception) {
-            tvStatus.text = "Network Error: ${e.message}"
-            Toast.makeText(
-                this,
-                "Wi-Fi/hotspot check karo: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
         val serviceIntent = Intent(this, TransferReceiverService::class.java).apply {
             action = TransferReceiverService.ACTION_START
         }
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
-
-            val port = TransferReceiverService.PORT
-            val qrPayload = "MSENDER|http://$ip:$port"
-
-            showQrCode(qrPayload)
-            tvStatus.text =
-                "Receiver Mode ON\\nIP: http://$ip:$port\\nScan from Sender device"
-        } catch (e: Exception) {
-            tvStatus.text = "Receiver Error: ${e.message}"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
         }
+
+        val ip = NetworkUtils.getLocalIp()
+        val port = TransferReceiverService.PORT
+        val qrPayload = "MSENDER|http://$ip:$port"
+
+        showQrCode(qrPayload)
+        tvStatus.text = "Receiver Mode ON\nIP: http://$ip:$port"
     }
 
     private fun handleScannedQr(payload: String) {
@@ -173,45 +173,87 @@ class MainActivity : AppCompatActivity() {
 
     private fun startUploadStream(uploadUrl: String) {
         runOnUiThread {
-            tvStatus.text = "Uploading to: $uploadUrl"
-            progressBar.visibility = View.VISIBLE
+            progressContainer.visibility = View.VISIBLE
+            qrContainer.visibility = View.GONE
         }
 
         Thread {
             try {
                 for ((index, item) in selectedItems.withIndex()) {
+                    val totalBytes = item.size
+                    var transferredBytes = 0L
+                    var lastTime = System.currentTimeMillis()
+                    var bytesSinceLastTime = 0L
+
                     runOnUiThread {
-                        tvStatus.text = "Sending [${index + 1}/${selectedItems.size}]: ${item.name}"
+                        tvCurrentTransferFile.text = "[${index + 1}/${selectedItems.size}] ${item.name}"
+                        transferProgressBar.progress = 0
                     }
 
-                    val fileBytes = if (item.file != null) {
-                        item.file.readBytes()
-                    } else if (item.uri != null) {
-                        contentResolver.openInputStream(item.uri)?.use { it.readBytes() }
-                    } else null
+                    val streamingBody = object : RequestBody() {
+                        override fun contentType(): MediaType? = "application/octet-stream".toMediaTypeOrNull()
+                        override fun contentLength(): Long = totalBytes
 
-                    if (fileBytes != null) {
+                        override fun writeTo(sink: BufferedSink) {
+                            val inStream: InputStream? = if (item.file != null) {
+                                item.file.inputStream()
+                            } else if (item.uri != null) {
+                                contentResolver.openInputStream(item.uri)
+                            } else null
+
+                            if (inStream == null) return
+
+                            val buffer = ByteArray(64 * 1024)
+                            try {
+                                var read = inStream.read(buffer)
+                                while (read != -1) {
+                                    sink.write(buffer, 0, read)
+                                    transferredBytes += read
+                                    bytesSinceLastTime += read
+
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastTime >= 500) {
+                                        val timeDiffSec = (now - lastTime) / 1000.0
+                                        val speedMb = if (timeDiffSec > 0) (bytesSinceLastTime / (1024.0 * 1024.0)) / timeDiffSec else 0.0
+                                        val percent = if (totalBytes > 0) ((transferredBytes * 100) / totalBytes).toInt() else 0
+
+                                        runOnUiThread {
+                                            transferProgressBar.progress = percent
+                                            tvTransferPercent.text = "$percent%"
+                                            tvTransferSpeed.text = String.format("%.2f MB/s", speedMb)
+                                        }
+                                        lastTime = now
+                                        bytesSinceLastTime = 0L
+                                    }
+                                    read = inStream.read(buffer)
+                                }
+                            } finally {
+                                inStream.close()
+                            }
+                        }
+                    }
+
                     val request = Request.Builder()
                         .url(uploadUrl)
-                        .addHeader("x-filename", java.net.URLEncoder.encode(item.name, "UTF-8"))
+                        .addHeader("x-filename", URLEncoder.encode(item.name, "UTF-8"))
                         .post(streamingBody)
                         .build()
-                        val response = httpClient.newCall(request).execute()
-                        if (!response.isSuccessful) {
-                            throw IOException("HTTP Error ${response.code}")
-                        }
+
+                    val response = httpClient.newCall(request).execute()
+                    if (!response.isSuccessful) {
+                        throw Exception("HTTP Error: ${response.code}")
                     }
                 }
 
                 runOnUiThread {
-                    tvStatus.text = "All files transferred successfully!"
-                    progressBar.visibility = View.GONE
-                    Toast.makeText(this@MainActivity, "Files Sent Successfully!", Toast.LENGTH_LONG).show()
+                    progressContainer.visibility = View.GONE
+                    tvStatus.text = "Transfer Finished! All files sent."
+                    Toast.makeText(this@MainActivity, "Files sent successfully!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
+                    progressContainer.visibility = View.GONE
                     tvStatus.text = "Transfer Error: ${e.message}"
-                    progressBar.visibility = View.GONE
                     Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
