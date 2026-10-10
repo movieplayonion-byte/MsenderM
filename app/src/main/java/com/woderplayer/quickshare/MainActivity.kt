@@ -21,15 +21,13 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
-import com.woderplayer.quickshare.server.FileServerService
-import com.woderplayer.quickshare.util.Constants
+import com.woderplayer.quickshare.engine.NetworkUtils
+import com.woderplayer.quickshare.engine.TransferReceiverService
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.IOException
-import java.net.NetworkInterface
-import java.util.Collections
 
 data class TransferItem(val name: String, val size: Long, val file: File? = null, val uri: Uri? = null)
 data class AppItem(val name: String, val packageName: String, val apkPath: String)
@@ -48,7 +46,7 @@ class MainActivity : AppCompatActivity() {
 
     private val selectedItems = mutableListOf<TransferItem>()
     private val installedApps = mutableListOf<AppItem>()
-    private val okHttpClient = OkHttpClient()
+    private val httpClient = OkHttpClient()
 
     private val multiFilePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -112,7 +110,7 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             val options = ScanOptions().apply {
-                setPrompt("Scan Receiver's QR Code")
+                setPrompt("Scan Receiver QR Code")
                 setBeepEnabled(true)
                 setOrientationLocked(true)
                 captureActivity = com.journeyapps.barcodescanner.CaptureActivity::class.java
@@ -125,30 +123,13 @@ class MainActivity : AppCompatActivity() {
                 requestMissingPermissions()
                 return@setOnClickListener
             }
-            startReceiverMode()
+            startReceiverEngine()
         }
     }
 
-    private fun getDeviceIpAddress(): String {
-        try {
-            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
-            for (intf in interfaces) {
-                val addrs = Collections.list(intf.inetAddresses)
-                for (addr in addrs) {
-                    if (!addr.isLoopbackAddress) {
-                        val host = addr.hostAddress ?: ""
-                        val isIPv4 = host.indexOf(':') < 0
-                        if (isIPv4) return host
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return "127.0.0.1"
-    }
-
-    private fun startReceiverMode() {
-        val serviceIntent = Intent(this, FileServerService::class.java).apply {
-            action = Constants.ACTION_START_SERVICE
+    private fun startReceiverEngine() {
+        val serviceIntent = Intent(this, TransferReceiverService::class.java).apply {
+            action = TransferReceiverService.ACTION_START
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
@@ -156,12 +137,12 @@ class MainActivity : AppCompatActivity() {
             startService(serviceIntent)
         }
 
-        val localIp = getDeviceIpAddress()
-        val port = 8080
-        val qrPayload = "MSENDER|http://$localIp:$port"
+        val ip = NetworkUtils.getLocalIp()
+        val port = TransferReceiverService.PORT
+        val qrPayload = "MSENDER|http://$ip:$port"
 
         showQrCode(qrPayload)
-        tvStatus.text = "Receiver Ready!\nIP: http://$localIp:$port\nWaiting for Sender..."
+        tvStatus.text = "Receiver Mode ON\nIP: http://$ip:$port\nScan from Sender device"
     }
 
     private fun handleScannedQr(payload: String) {
@@ -170,10 +151,10 @@ class MainActivity : AppCompatActivity() {
         } else {
             payload
         }
-        uploadFilesToReceiver("$targetUrl/upload")
+        startUploadStream("$targetUrl/upload")
     }
 
-    private fun uploadFilesToReceiver(uploadUrl: String) {
+    private fun startUploadStream(uploadUrl: String) {
         runOnUiThread {
             tvStatus.text = "Uploading to: $uploadUrl"
             progressBar.visibility = View.VISIBLE
@@ -186,8 +167,6 @@ class MainActivity : AppCompatActivity() {
                         tvStatus.text = "Sending [${index + 1}/${selectedItems.size}]: ${item.name}"
                     }
 
-                    val requestBodyBuilder = MultipartBody.Builder().setType(MultipartBody.FORM)
-
                     val fileBytes = if (item.file != null) {
                         item.file.readBytes()
                     } else if (item.uri != null) {
@@ -195,25 +174,32 @@ class MainActivity : AppCompatActivity() {
                     } else null
 
                     if (fileBytes != null) {
-                        val body = fileBytes.toRequestBody("application/octet-stream".toMediaTypeOrNull())
-                        requestBodyBuilder.addFormDataPart("file", item.name, body)
+                        val requestBody = MultipartBody.Builder()
+                            .setType(MultipartBody.FORM)
+                            .addFormDataPart("filename", item.name)
+                            .addFormDataPart(
+                                "file",
+                                item.name,
+                                fileBytes.toRequestBody("application/octet-stream".toMediaTypeOrNull())
+                            )
+                            .build()
 
                         val request = Request.Builder()
                             .url(uploadUrl)
-                            .post(requestBodyBuilder.build())
+                            .post(requestBody)
                             .build()
 
-                        val response = okHttpClient.newCall(request).execute()
+                        val response = httpClient.newCall(request).execute()
                         if (!response.isSuccessful) {
-                            throw IOException("Failed to send: ${response.code}")
+                            throw IOException("HTTP Error ${response.code}")
                         }
                     }
                 }
 
                 runOnUiThread {
-                    tvStatus.text = "All items sent successfully!"
+                    tvStatus.text = "All files transferred successfully!"
                     progressBar.visibility = View.GONE
-                    Toast.makeText(this@MainActivity, "Files Sent!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "Files Sent Successfully!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -277,18 +263,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkAllPermissionsGranted(): Boolean {
-        val list = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION)
+        val list = mutableListOf(Manifest.permission.CAMERA)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            list.add(Manifest.permission.NEARBY_WIFI_DEVICES)
             list.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         return list.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
     }
 
     private fun requestMissingPermissions() {
-        val list = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION)
+        val list = mutableListOf(Manifest.permission.CAMERA)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            list.add(Manifest.permission.NEARBY_WIFI_DEVICES)
             list.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         ActivityCompat.requestPermissions(this, list.toTypedArray(), 101)
@@ -296,8 +280,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        val serviceIntent = Intent(this, FileServerService::class.java).apply {
-            action = Constants.ACTION_STOP_SERVICE
+        val serviceIntent = Intent(this, TransferReceiverService::class.java).apply {
+            action = TransferReceiverService.ACTION_STOP
         }
         stopService(serviceIntent)
     }
