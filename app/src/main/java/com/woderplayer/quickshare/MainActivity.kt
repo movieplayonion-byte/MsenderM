@@ -191,21 +191,11 @@ class MainActivity : AppCompatActivity() {
                     } else null
 
                     if (fileBytes != null) {
-                        val requestBody = MultipartBody.Builder()
-                            .setType(MultipartBody.FORM)
-                            .addFormDataPart("filename", item.name)
-                            .addFormDataPart(
-                                "file",
-                                item.name,
-                                fileBytes.toRequestBody("application/octet-stream".toMediaTypeOrNull())
-                            )
-                            .build()
-
-                        val request = Request.Builder()
-                            .url(uploadUrl)
-                            .post(requestBody)
-                            .build()
-
+                    val request = Request.Builder()
+                        .url(uploadUrl)
+                        .addHeader("x-filename", java.net.URLEncoder.encode(item.name, "UTF-8"))
+                        .post(streamingBody)
+                        .build()
                         val response = httpClient.newCall(request).execute()
                         if (!response.isSuccessful) {
                             throw IOException("HTTP Error ${response.code}")
