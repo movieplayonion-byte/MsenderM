@@ -87,13 +87,13 @@ class TransferReceiverService : Service() {
 class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) {
 
     override fun serve(session: IHTTPSession): Response {
-        if (session.uri == "/ping") {
+        val uri = session.uri ?: ""
+        if (uri == "/ping") {
             return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "PONG")
         }
 
-        if (session.method == Method.POST && session.uri.startsWith("/upload")) {
+        if (session.method == Method.POST) {
             return try {
-                // Filename header ya query param se lo
                 val rawName = session.headers["x-filename"] 
                     ?: session.parameters["filename"]?.firstOrNull() 
                     ?: "file_${System.currentTimeMillis()}"
@@ -102,10 +102,10 @@ class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(po
                 val totalLen = session.headers["content-length"]?.toLongOrNull() ?: 0L
                 val inputStream = session.inputStream
 
-                val savedFile = saveIncomingStream(fileName, inputStream, totalLen)
+                val isSaved = saveIncomingStream(fileName, inputStream, totalLen)
 
-                if (savedFile != null) {
-                    TransferReceiverService.onFileReceivedListener?.invoke(fileName, savedFile.length())
+                if (isSaved) {
+                    TransferReceiverService.onFileReceivedListener?.invoke(fileName, totalLen)
                     newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "SAVED")
                 } else {
                     newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Save Failed")
@@ -119,10 +119,9 @@ class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(po
         return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "MsenderM Ready")
     }
 
-    private fun saveIncomingStream(fileName: String, inputStream: InputStream, length: Long): File? {
+    private fun saveIncomingStream(fileName: String, inputStream: InputStream, length: Long): Boolean {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ MediaStore API - 100% visible in Downloads & Gallery
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                     put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/MsenderM")
@@ -132,7 +131,7 @@ class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(po
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         copyBytes(inputStream, out, length)
                     }
-                    File("/storage/emulated/0/Download/MsenderM/$fileName")
+                    true
                 } else {
                     saveFallback(fileName, inputStream, length)
                 }
@@ -145,7 +144,7 @@ class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(po
         }
     }
 
-    private fun saveFallback(fileName: String, inputStream: InputStream, length: Long): File? {
+    private fun saveFallback(fileName: String, inputStream: InputStream, length: Long): Boolean {
         return try {
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "MsenderM")
             if (!dir.exists()) dir.mkdirs()
@@ -154,10 +153,10 @@ class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(po
                 copyBytes(inputStream, out, length)
             }
             MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), null, null)
-            target
+            true
         } catch (e: Exception) {
             e.printStackTrace()
-            null
+            false
         }
     }
 
@@ -181,32 +180,19 @@ object NetworkUtils {
     fun getLocalIp(): String {
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
-            // Priority 1: Hotspot / Wi-Fi interfaces
             for (intf in interfaces) {
                 val name = intf.name.lowercase()
                 if (name.contains("wlan") || name.contains("ap") || name.contains("p2p") || name.contains("rndis")) {
                     for (addr in Collections.list(intf.inetAddresses)) {
                         if (!addr.isLoopbackAddress) {
                             val host = addr.hostAddress ?: ""
-                            if (host.indexOf(':') < 0 && host.startsWith("192.168.")) {
+                            if (host.indexOf(':') < 0 && (host.startsWith("192.168.") || host.startsWith("10."))) {
                                 return host
                             }
                         }
                     }
                 }
             }
-            // Priority 2: Any 192.168.x.x
-            for (intf in interfaces) {
-                for (addr in Collections.list(intf.inetAddresses)) {
-                    if (!addr.isLoopbackAddress) {
-                        val host = addr.hostAddress ?: ""
-                        if (host.indexOf(':') < 0 && host.startsWith("192.168.")) {
-                            return host
-                        }
-                    }
-                }
-            }
-            // Fallback
             for (intf in interfaces) {
                 for (addr in Collections.list(intf.inetAddresses)) {
                     if (!addr.isLoopbackAddress) {
