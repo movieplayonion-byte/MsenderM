@@ -110,18 +110,42 @@ class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(po
 
 object NetworkUtils {
     fun getLocalIp(): String {
-        try {
-            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
-            for (intf in interfaces) {
-                val addrs = Collections.list(intf.inetAddresses)
-                for (addr in addrs) {
-                    if (!addr.isLoopbackAddress) {
-                        val host = addr.hostAddress ?: ""
-                        if (host.indexOf(':') < 0) return host
-                    }
+        val interfaces = java.util.Collections.list(
+            java.net.NetworkInterface.getNetworkInterfaces()
+        )
+
+        val candidates = interfaces
+            .filter { it.isUp && !it.isLoopback }
+            .sortedBy {
+                when {
+                    it.name.startsWith("wlan", true) -> 0
+                    it.name.startsWith("swlan", true) -> 1
+                    it.name.startsWith("ap", true) -> 2
+                    it.name.startsWith("p2p", true) -> 3
+                    else -> 10
                 }
             }
-        } catch (_: Exception) {}
-        return "127.0.0.1"
+
+        for (intf in candidates) {
+            val name = intf.name.lowercase()
+            if (name == "lo" ||
+                name.startsWith("tun") ||
+                name.startsWith("tap") ||
+                name.startsWith("dummy")) continue
+
+            val addresses = java.util.Collections.list(intf.inetAddresses)
+            for (addr in addresses) {
+                if (addr is java.net.Inet4Address &&
+                    !addr.isLoopbackAddress &&
+                    addr.isSiteLocalAddress
+                ) {
+                    return addr.hostAddress
+                }
+            }
+        }
+
+        throw java.io.IOException(
+            "No local IPv4 address found. Connect both phones to a compatible Wi-Fi network."
+        )
     }
 }

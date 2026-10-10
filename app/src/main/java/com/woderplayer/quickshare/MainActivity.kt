@@ -128,21 +128,38 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startReceiverEngine() {
+        val ip = try {
+            NetworkUtils.getLocalIp()
+        } catch (e: Exception) {
+            tvStatus.text = "Network Error: ${e.message}"
+            Toast.makeText(
+                this,
+                "Wi-Fi/hotspot check karo: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
         val serviceIntent = Intent(this, TransferReceiverService::class.java).apply {
             action = TransferReceiverService.ACTION_START
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+
+            val port = TransferReceiverService.PORT
+            val qrPayload = "MSENDER|http://$ip:$port"
+
+            showQrCode(qrPayload)
+            tvStatus.text =
+                "Receiver Mode ON\\nIP: http://$ip:$port\\nScan from Sender device"
+        } catch (e: Exception) {
+            tvStatus.text = "Receiver Error: ${e.message}"
         }
-
-        val ip = NetworkUtils.getLocalIp()
-        val port = TransferReceiverService.PORT
-        val qrPayload = "MSENDER|http://$ip:$port"
-
-        showQrCode(qrPayload)
-        tvStatus.text = "Receiver Mode ON\nIP: http://$ip:$port\nScan from Sender device"
     }
 
     private fun handleScannedQr(payload: String) {
