@@ -48,15 +48,15 @@ class ReceiveActivity : AppCompatActivity() {
                 generateQR(ssid, pass, ip)
             },
             onError = { err ->
-                tvStatus.text = "Error: $err"
+                tvStatus.text = "Hotspot Error: $err"
             }
         )
     }
 
     private fun generateQR(ssid: String, pass: String, ip: String) {
         try {
-            // Format: WIFI|SSID|PASSWORD|IP|PORT
-            val qrContent = "MSENDER|$ssid|$pass|$ip|8080"
+            // Standard Android Wi-Fi QR Format + IP Payload
+            val qrContent = "WIFI:T:WPA;S:$ssid;P:$pass;H:http://$ip:8080;;"
 
             val writer = QRCodeWriter()
             val bitMatrix = writer.encode(qrContent, BarcodeFormat.QR_CODE, 512, 512)
@@ -71,7 +71,7 @@ class ReceiveActivity : AppCompatActivity() {
             }
 
             ivQrCode.setImageBitmap(bitmap)
-            tvStatus.text = "Hotspot: $ssid\nScan with sender to auto-connect"
+            tvStatus.text = "Hotspot: $ssid\nScan QR with sender to auto-connect"
         } catch (e: Exception) {
             tvStatus.text = "QR Error: ${e.message}"
         }
