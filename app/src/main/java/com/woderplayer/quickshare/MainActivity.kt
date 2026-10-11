@@ -384,14 +384,14 @@ class MainActivity : AppCompatActivity() {
         tvSelectedCount.text = "${selectedItemsMap.size} selected (~$totalMb MB)"
     }
 
-        private fun handleScannedQr(payload: String) {
+            private fun handleScannedQr(payload: String) {
         try {
             var hostUrl = "http://192.168.43.1:8080"
 
             if (payload.startsWith("WIFI:")) {
                 var ssid = ""
                 var pass = ""
-                val clean = payload.removePrefix("WIFI:").trimEnd { it == ";" }
+                val clean = payload.removePrefix("WIFI:").trimEnd { it == ' ; ' }
                 val tokens = clean.split(";")
                 for (t in tokens) {
                     if (t.startsWith("S:")) ssid = t.removePrefix("S:")
@@ -408,7 +408,7 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread { startUploadStream("$hostUrl/upload") }
                     }, {
                         runOnUiThread {
-                            Toast.makeText(this, "Auto-connect failed, connecting direct...", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Direct connection...", Toast.LENGTH_SHORT).show()
                             startUploadStream("$hostUrl/upload")
                         }
                     })
@@ -424,34 +424,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Throwable) {
             Toast.makeText(this, "Scan Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
-    }
-                }, {
-                    runOnUiThread { startUploadStream("$hostUrl/upload") }
-                })
-                return
-            }
-        } else if (payload.startsWith("MSENDER|")) {
-            val parts = payload.split("|")
-            val ssid = if (parts.size > 1) parts[1] else ""
-            val pass = if (parts.size > 2) parts[2] else ""
-            val ip = if (parts.size > 3) parts[3] else "192.168.43.1"
-            val port = if (parts.size > 4) parts[4] else "8080"
-            hostUrl = "http://$ip:$port"
-            if (ssid.isNotEmpty()) {
-                WifiAutoConnector.connectToHotspot(this, ssid, pass, {
-                    runOnUiThread { startUploadStream("$hostUrl/upload") }
-                }, {
-                    runOnUiThread { startUploadStream("$hostUrl/upload") }
-                })
-                return
-            }
-        } else if (payload.startsWith("http://") || payload.startsWith("https://")) {
-            hostUrl = payload
-        } else {
-            hostUrl = "http://$payload"
-        }
-
-        startUploadStream("$hostUrl/upload")
     }
 
     private fun startUploadStream(uploadUrl: String) {
