@@ -391,7 +391,7 @@ class MainActivity : AppCompatActivity() {
             if (payload.startsWith("WIFI:")) {
                 var ssid = ""
                 var pass = ""
-                val clean = payload.removePrefix("WIFI:").trimEnd { it == ' ; ' }
+                val clean = payload.removePrefix("WIFI:").removeSuffix(";;").removeSuffix(";")
                 val tokens = clean.split(";")
                 for (t in tokens) {
                     if (t.startsWith("S:")) ssid = t.removePrefix("S:")

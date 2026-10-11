@@ -1,6 +1,6 @@
 {
-  "versionCode": 20,
-  "versionName": "1.0.20",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.20/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.20:\n1. Fixed duplicate method definitions and scope compilation in MainActivity\n2. Clean Wi-Fi auto-connector integration"
+  "versionCode": 21,
+  "versionName": "1.0.21",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.21/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.21:\n1. Fixed character literal syntax error\n2. Robust Wi-Fi QR parsing and automated clone hotspot connection"
 }
