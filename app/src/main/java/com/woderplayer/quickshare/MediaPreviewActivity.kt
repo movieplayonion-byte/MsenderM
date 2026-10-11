@@ -1,13 +1,16 @@
 package com.woderplayer.quickshare
 
+import android.content.Intent
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
@@ -48,6 +51,17 @@ class MediaPreviewActivity : AppCompatActivity() {
         }
 
         val category = previewList.firstOrNull()?.category ?: Category.IMAGES
+
+        // Agar user ne DOCS open kiya hai toh sidha system document viewer launch karo
+        if (category == Category.DOCS) {
+            val item = previewList.getOrNull(initialIndex)
+            if (item != null) {
+                openDocumentExternally(item)
+                finish()
+                return
+            }
+        }
+
         if (category == Category.VIDEOS) {
             viewPager.orientation = ViewPager2.ORIENTATION_VERTICAL
         } else {
@@ -65,17 +79,13 @@ class MediaPreviewActivity : AppCompatActivity() {
             playAudioAtIndex(safeIndex)
         }
 
-        // Auto-play on forward AND backward scroll (Reels / Shorts style)
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 if (position in previewList.indices) {
                     tvHeader.text = previewList[position].name
 
                     if (category == Category.VIDEOS) {
-                        // Purane chal rahe video ko roko
                         currentActiveVideoView?.pause()
-                        
-                        // Current page ka VideoView dhund kar play karo
                         viewPager.post {
                             val holder = (viewPager.getChildAt(0) as? RecyclerView)
                                 ?.findViewHolderForAdapterPosition(position) as? PreviewAdapter.VH
@@ -112,6 +122,34 @@ class MediaPreviewActivity : AppCompatActivity() {
         btnNext.setOnClickListener {
             val cur = viewPager.currentItem
             if (cur < previewList.size - 1) viewPager.currentItem = cur + 1
+        }
+    }
+
+    private fun openDocumentExternally(item: MediaItem) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                val uri = if (item.uri != null) {
+                    item.uri
+                } else if (item.file != null) {
+                    FileProvider.getUriForFile(this@MediaPreviewActivity, "${packageName}.provider", item.file)
+                } else null
+
+                val ext = item.name.substringAfterLast('.', "").lowercase()
+                val mime = when (ext) {
+                    "pdf" -> "application/pdf"
+                    "doc", "docx" -> "application/msword"
+                    "xls", "xlsx" -> "application/vnd.ms-excel"
+                    "ppt", "pptx" -> "application/vnd.ms-powerpoint"
+                    "txt" -> "text/plain"
+                    "vcf" -> "text/x-vcard"
+                    else -> "*/*"
+                }
+                setDataAndType(uri, mime)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "No app found to open this document", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -172,24 +210,12 @@ class MediaPreviewActivity : AppCompatActivity() {
                     holder.vvVideo.visibility = View.VISIBLE
                     val targetUri = item.uri ?: Uri.fromFile(item.file)
                     holder.vvVideo.setVideoURI(targetUri)
-
-                    // Looping auto-replay (Instagram reels style)
                     holder.vvVideo.setOnPreparedListener { mp ->
                         mp.isLooping = true
                         if (holder.adapterPosition == viewPager.currentItem) {
                             currentActiveVideoView = holder.vvVideo
                             holder.vvVideo.start()
                         }
-                    }
-                }
-                Category.DOCS -> {
-                    holder.scrollDoc.visibility = View.VISIBLE
-                    try {
-                        val stream = if (item.uri != null) contentResolver.openInputStream(item.uri) else item.file?.inputStream()
-                        val text = stream?.bufferedReader()?.use { it.readText() } ?: "Document Content"
-                        holder.tvDoc.text = if (text.length > 5000) text.substring(0, 5000) + "\n...[Truncated]" else text
-                    } catch (_: Exception) {
-                        holder.tvDoc.text = "Document ready for sharing."
                     }
                 }
                 else -> {}

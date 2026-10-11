@@ -1,6 +1,6 @@
 {
-  "versionCode": 4,
-  "versionName": "1.0.4",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.4/app-release.apk",
-  "releaseNotes": "1. DOCS tab ab clean List View me aayega\n2. Naya FILES tab: Internal Storage Browser & Big Files Cleaner (>25MB)\n3. Select All aur Direct Delete options\n4. Videos me smooth backward/forward auto-play reels style"
+  "versionCode": 5,
+  "versionName": "1.0.5",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/latest/MsenderM-update.apk",
+  "releaseNotes": "1. Fixed Document Viewer: PDFs & Docs open properly via native app\n2. Fixed Auto Update System: Seamless background download and install\n3. Storage cleanup & Big Files support"
 }
