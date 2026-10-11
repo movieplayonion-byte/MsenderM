@@ -33,7 +33,7 @@ object WifiAutoConnector {
         ssid: String,
         pass: String,
         onConnected: () -> Unit,
-        onError: (String) -> Unit
+        onError: () -> Unit = {}
     ) {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
@@ -67,7 +67,7 @@ object WifiAutoConnector {
 
                 override fun onUnavailable() {
                     super.onUnavailable()
-                    onError("Wi-Fi connection unavailable or rejected")
+                    onError()
                 }
 
                 override fun onLost(network: Network) {
@@ -81,10 +81,10 @@ object WifiAutoConnector {
             try {
                 cm.requestNetwork(request, networkCallback!!)
             } catch (e: Exception) {
-                onError("Failed to request network: ${e.message}")
+                onError()
             }
         } else {
-            onError("Android 10+ required for WifiNetworkSpecifier")
+            onError()
         }
     }
 
