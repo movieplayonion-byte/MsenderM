@@ -133,13 +133,15 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Select items to send!", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            val options = ScanOptions().apply {
-                setPrompt("Scan receiver QR code")
-                setBeepEnabled(true)
-                setOrientationLocked(true)
-                captureActivity = com.journeyapps.barcodescanner.CaptureActivity::class.java
+            NetworkRequirements.ensureSender(this) {
+                val options = ScanOptions().apply {
+                    setPrompt("Scan receiver QR code")
+                    setBeepEnabled(true)
+                    setOrientationLocked(true)
+                    captureActivity = com.journeyapps.barcodescanner.CaptureActivity::class.java
+                }
+                qrScannerLauncher.launch(options)
             }
-            qrScannerLauncher.launch(options)
         }
 
         btnReceive.setOnClickListener {
