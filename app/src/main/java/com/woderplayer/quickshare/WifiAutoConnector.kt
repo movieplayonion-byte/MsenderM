@@ -28,7 +28,7 @@ object WifiAutoConnector {
         }
     }
 
-    fun connectHotspot(
+    fun connectToHotspot(
         context: Context,
         ssid: String,
         pass: String,
