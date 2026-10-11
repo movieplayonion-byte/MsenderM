@@ -386,7 +386,7 @@ class MainActivity : AppCompatActivity() {
 
             private fun handleScannedQr(payload: String) {
         try {
-            var hostUrl = "http://192.168.43.1:8080"
+            var hostUrl = "http://192.168.43.1:8888"
 
             if (payload.startsWith("WIFI:")) {
                 var ssid = ""
@@ -405,6 +405,10 @@ class MainActivity : AppCompatActivity() {
                 if (ssid.isNotEmpty()) {
                     Toast.makeText(this, "Connecting to $ssid...", Toast.LENGTH_SHORT).show()
                     WifiAutoConnector.connectToHotspot(applicationContext, ssid, pass, {
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            startUploadStream("$hostUrl/upload")
+                        }, 2500)
+                    }, {
                         runOnUiThread { startUploadStream("$hostUrl/upload") }
                     }, {
                         runOnUiThread {
