@@ -1,6 +1,6 @@
 {
-  "versionCode": 24,
-  "versionName": "1.0.24",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.24/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.24:\n1. Fixed malformed closing braces and inner class scope in MainActivity\n2. Clean Wi-Fi auto-connection and upload handling"
+  "versionCode": 25,
+  "versionName": "1.0.25",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.25/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.25:\n1. Fixed Mobile Data route bypass using Network socketFactory\n2. Fixed Android Q+ WifiNetworkSpecifier version check\n3. Enforced direct offline hotspot binding"
 }

@@ -493,7 +493,12 @@ class MainActivity : AppCompatActivity() {
                         .post(body)
                         .build()
 
-                    val resp = httpClient.newCall(req).execute()
+                    val activeClient = WifiAutoConnector.boundNetwork?.let { net ->
+                        httpClient.newBuilder()
+                            .socketFactory(net.socketFactory)
+                            .build()
+                    } ?: httpClient
+                    val resp = activeClient.newCall(req).execute()
                     if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
                 }
 

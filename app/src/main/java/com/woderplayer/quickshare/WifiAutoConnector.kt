@@ -11,6 +11,7 @@ import android.os.Build
 object WifiAutoConnector {
 
     private var activeCallback: ConnectivityManager.NetworkCallback? = null
+    var boundNetwork: Network? = null
 
     fun connectToHotspot(
         context: Context,
@@ -40,6 +41,7 @@ object WifiAutoConnector {
 
                 val callback = object : ConnectivityManager.NetworkCallback() {
                     override fun onAvailable(network: Network) {
+                        boundNetwork = network
                         try {
                             cm.bindProcessToNetwork(network)
                         } catch (_: Throwable) {}
@@ -67,6 +69,7 @@ object WifiAutoConnector {
             activeCallback?.let { cm?.unregisterNetworkCallback(it) }
             cm?.bindProcessToNetwork(null)
             activeCallback = null
+            boundNetwork = null
         } catch (_: Throwable) {}
     }
 }
