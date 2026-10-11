@@ -1,6 +1,7 @@
 package com.woderplayer.quickshare
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -25,6 +26,7 @@ import com.woderplayer.quickshare.engine.TransferReceiverService
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okio.BufferedSink
+import java.io.File
 import java.io.InputStream
 import java.net.URLEncoder
 
@@ -37,6 +39,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var lvContent: ListView
     private lateinit var btnSend: ImageButton
     private lateinit var btnReceive: ImageButton
+    private lateinit var btnSelectAll: Button
+    private lateinit var btnDeleteSelected: Button
+
+    private lateinit var filesSubBar: View
+    private lateinit var btnInternalStorage: Button
+    private lateinit var btnBigFiles: Button
 
     private lateinit var progressContainer: View
     private lateinit var tvCurrentTransferFile: TextView
@@ -49,8 +57,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabVideos: Button
     private lateinit var tabAudio: Button
     private lateinit var tabDocs: Button
+    private lateinit var tabFiles: Button
 
     private var currentCategory = Category.APPS
+    private var isBigFilesMode = false
+    private var currentFolder: File = Environment.getExternalStorageDirectory()
+
     private val categoryCache = mutableMapOf<Category, List<MediaItem>>()
     private val displayedItems = mutableListOf<MediaItem>()
     private val selectedItemsMap = LinkedHashMap<String, MediaItem>()
@@ -75,6 +87,12 @@ class MainActivity : AppCompatActivity() {
         lvContent = findViewById(R.id.lvContent)
         btnSend = findViewById(R.id.btnSend)
         btnReceive = findViewById(R.id.btnReceive)
+        btnSelectAll = findViewById(R.id.btnSelectAll)
+        btnDeleteSelected = findViewById(R.id.btnDeleteSelected)
+
+        filesSubBar = findViewById(R.id.filesSubBar)
+        btnInternalStorage = findViewById(R.id.btnInternalStorage)
+        btnBigFiles = findViewById(R.id.btnBigFiles)
 
         progressContainer = findViewById(R.id.progressContainer)
         tvCurrentTransferFile = findViewById(R.id.tvCurrentTransferFile)
@@ -87,6 +105,7 @@ class MainActivity : AppCompatActivity() {
         tabVideos = findViewById(R.id.tabVideos)
         tabAudio = findViewById(R.id.tabAudio)
         tabDocs = findViewById(R.id.tabDocs)
+        tabFiles = findViewById(R.id.tabFiles)
 
         gridAdapter = GridMediaAdapter()
         listAdapter = GenericListAdapter()
@@ -95,6 +114,7 @@ class MainActivity : AppCompatActivity() {
 
         setupTabs()
         setupFuzzySearch()
+        setupSelectionAndActions()
         checkPermissionsAndLoad()
         AppUpdater.check(this, httpClient)
 
@@ -131,6 +151,79 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupSelectionAndActions() {
+        btnSelectAll.setOnClickListener {
+            if (displayedItems.isEmpty()) return@setOnClickListener
+            val allSelected = displayedItems.all { selectedItemsMap.containsKey(it.id) }
+            if (allSelected) {
+                displayedItems.forEach { selectedItemsMap.remove(it.id) }
+            } else {
+                displayedItems.forEach {
+                    if (!it.isDirectory) selectedItemsMap[it.id] = it
+                }
+            }
+            updateSelectionHeader()
+            gridAdapter.notifyDataSetChanged()
+            listAdapter.notifyDataSetChanged()
+        }
+
+        btnDeleteSelected.setOnClickListener {
+            if (selectedItemsMap.isEmpty()) {
+                Toast.makeText(this, "No files selected to delete", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Delete Files")
+                .setMessage("Are you sure you want to permanently delete ${selectedItemsMap.size} selected file(s)?")
+                .setPositiveButton("Delete") { _, _ ->
+                    deleteSelectedFiles()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        btnInternalStorage.setOnClickListener {
+            isBigFilesMode = false
+            btnInternalStorage.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_blue_bright)
+            btnBigFiles.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.darker_gray)
+            loadCategoryAsync(Category.FILES)
+        }
+
+        btnBigFiles.setOnClickListener {
+            isBigFilesMode = true
+            btnBigFiles.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_blue_bright)
+            btnInternalStorage.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.darker_gray)
+            loadCategoryAsync(Category.FILES)
+        }
+    }
+
+    private fun deleteSelectedFiles() {
+        Thread {
+            var deletedCount = 0
+            for (item in selectedItemsMap.values.toList()) {
+                try {
+                    var success = false
+                    if (item.file != null && item.file.exists()) {
+                        success = item.file.delete()
+                    } else if (item.uri != null) {
+                        val rows = contentResolver.delete(item.uri, null, null)
+                        success = rows > 0
+                    }
+                    if (success) {
+                        deletedCount++
+                        selectedItemsMap.remove(item.id)
+                    }
+                } catch (_: Exception) {}
+            }
+            runOnUiThread {
+                Toast.makeText(this, "Deleted $deletedCount file(s)", Toast.LENGTH_SHORT).show()
+                categoryCache.clear()
+                updateSelectionHeader()
+                loadCategoryAsync(currentCategory)
+            }
+        }.start()
+    }
+
     private fun setupFuzzySearch() {
         etFuzzySearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -148,7 +241,8 @@ class MainActivity : AppCompatActivity() {
             tabImages to Category.IMAGES,
             tabVideos to Category.VIDEOS,
             tabAudio to Category.AUDIO,
-            tabDocs to Category.DOCS
+            tabDocs to Category.DOCS,
+            tabFiles to Category.FILES
         )
         for ((btn, cat) in tabs) {
             btn.setOnClickListener {
@@ -165,7 +259,8 @@ class MainActivity : AppCompatActivity() {
             tabImages to Category.IMAGES,
             tabVideos to Category.VIDEOS,
             tabAudio to Category.AUDIO,
-            tabDocs to Category.DOCS
+            tabDocs to Category.DOCS,
+            tabFiles to Category.FILES
         )
         for ((btn, cat) in tabs) {
             if (cat == currentCategory) {
@@ -177,12 +272,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (currentCategory == Category.APPS || currentCategory == Category.AUDIO) {
-            gvContent.visibility = View.GONE
-            lvContent.visibility = View.VISIBLE
-        } else {
+        filesSubBar.visibility = if (currentCategory == Category.FILES) View.VISIBLE else View.GONE
+
+        // Sirf Photos aur Videos Grid me rahenge, Apps, Audio, DOCS aur FILES hamesha clean LIST me rahenge!
+        if (currentCategory == Category.IMAGES || currentCategory == Category.VIDEOS) {
             gvContent.visibility = View.VISIBLE
             lvContent.visibility = View.GONE
+        } else {
+            gvContent.visibility = View.GONE
+            lvContent.visibility = View.VISIBLE
         }
     }
 
@@ -215,7 +313,7 @@ class MainActivity : AppCompatActivity() {
                         data = Uri.parse("package:$packageName")
                     }
                     startActivity(intent)
-                    Toast.makeText(this, "Enable All Files Access for reading Documents!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Enable All Files Access for reading Documents & Storage!", Toast.LENGTH_LONG).show()
                 } catch (_: Exception) {}
             }
         }
@@ -228,6 +326,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadCategoryAsync(cat: Category) {
+        if (cat == Category.FILES) {
+            Thread {
+                val list = if (isBigFilesMode) {
+                    MediaScanner.loadBigFiles(this)
+                } else {
+                    MediaScanner.loadDirectory(currentFolder)
+                }
+                runOnUiThread {
+                    displayedItems.clear()
+                    displayedItems.addAll(list)
+                    filterDisplayedItems()
+                }
+            }.start()
+            return
+        }
+
         if (categoryCache.containsKey(cat)) {
             filterDisplayedItems()
             return
@@ -240,6 +354,7 @@ class MainActivity : AppCompatActivity() {
                 Category.VIDEOS -> MediaScanner.loadVideos(this)
                 Category.AUDIO -> MediaScanner.loadAudio(this)
                 Category.DOCS -> MediaScanner.loadDocuments(this)
+                else -> emptyList()
             }
             categoryCache[cat] = list
             runOnUiThread {
@@ -251,7 +366,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun filterDisplayedItems() {
-        val rawList = categoryCache[currentCategory] ?: emptyList()
+        val rawList = if (currentCategory == Category.FILES) displayedItems.toList() else categoryCache[currentCategory] ?: emptyList()
         displayedItems.clear()
         if (currentSearchQuery.isEmpty()) {
             displayedItems.addAll(rawList)
@@ -355,6 +470,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleSelection(item: MediaItem) {
+        if (item.isDirectory) return
         if (selectedItemsMap.containsKey(item.id)) selectedItemsMap.remove(item.id)
         else selectedItemsMap[item.id] = item
         updateSelectionHeader()
@@ -364,6 +480,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun openPreview(position: Int) {
         val item = displayedItems.getOrNull(position) ?: return
+
+        if (item.isDirectory && item.file != null) {
+            currentFolder = item.file
+            loadCategoryAsync(Category.FILES)
+            return
+        }
+
         if (item.category == Category.APPS) {
             item.file?.let { MediaViewer.installApk(this, it) }
             return
@@ -371,6 +494,17 @@ class MainActivity : AppCompatActivity() {
         MediaPreviewActivity.previewList = displayedItems
         MediaPreviewActivity.initialIndex = position
         startActivity(Intent(this, MediaPreviewActivity::class.java))
+    }
+
+    override fun onBackPressed() {
+        if (currentCategory == Category.FILES && !isBigFilesMode && currentFolder != Environment.getExternalStorageDirectory()) {
+            currentFolder.parentFile?.let {
+                currentFolder = it
+                loadCategoryAsync(Category.FILES)
+                return
+            }
+        }
+        super.onBackPressed()
     }
 
     inner class GridMediaAdapter : BaseAdapter() {
@@ -388,16 +522,12 @@ class MainActivity : AppCompatActivity() {
             cb.isChecked = selectedItemsMap.containsKey(item.id)
             badge.visibility = if (item.category == Category.VIDEOS) View.VISIBLE else View.GONE
 
-            if (item.category == Category.DOCS) {
-                iv.setImageResource(android.R.drawable.ic_menu_agenda)
-            } else {
-                val model = item.uri ?: item.file
-                Glide.with(this@MainActivity)
-                    .load(model)
-                    .centerCrop()
-                    .placeholder(android.R.drawable.ic_menu_gallery)
-                    .into(iv)
-            }
+            val model = item.uri ?: item.file
+            Glide.with(this@MainActivity)
+                .load(model)
+                .centerCrop()
+                .placeholder(android.R.drawable.ic_menu_gallery)
+                .into(iv)
 
             cb.setOnClickListener { toggleSelection(item) }
             v.setOnClickListener { openPreview(p) }
@@ -417,9 +547,20 @@ class MainActivity : AppCompatActivity() {
             val tvSub = v.findViewById<TextView>(R.id.tvItemSub)
             val cb = v.findViewById<CheckBox>(R.id.cbSelected)
 
-            tvTitle.text = if (item.isInstalledApp) "Install: ${item.name}" else item.name
-            tvSub.text = String.format("%.2f MB", item.size / (1024.0 * 1024.0))
-            cb.isChecked = selectedItemsMap.containsKey(item.id)
+            if (item.isDirectory) {
+                tvTitle.text = "📁 ${item.name}"
+                tvSub.text = "Folder"
+                cb.visibility = View.INVISIBLE
+            } else {
+                cb.visibility = View.VISIBLE
+                cb.isChecked = selectedItemsMap.containsKey(item.id)
+                tvTitle.text = when {
+                    item.isInstalledApp -> "App: ${item.name}"
+                    item.category == Category.DOCS -> "📄 ${item.name}"
+                    else -> item.name
+                }
+                tvSub.text = String.format("%.2f MB", item.size / (1024.0 * 1024.0))
+            }
 
             cb.setOnClickListener { toggleSelection(item) }
             v.setOnClickListener { openPreview(p) }

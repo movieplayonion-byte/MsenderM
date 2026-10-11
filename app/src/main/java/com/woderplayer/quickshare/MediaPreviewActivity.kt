@@ -25,6 +25,7 @@ class MediaPreviewActivity : AppCompatActivity() {
     private lateinit var audioPanel: View
     private lateinit var btnPlayPause: Button
     private var mediaPlayer: MediaPlayer? = null
+    private var currentActiveVideoView: VideoView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,7 +54,8 @@ class MediaPreviewActivity : AppCompatActivity() {
             viewPager.orientation = ViewPager2.ORIENTATION_HORIZONTAL
         }
 
-        viewPager.adapter = PreviewAdapter(previewList)
+        val adapter = PreviewAdapter(previewList)
+        viewPager.adapter = adapter
         val safeIndex = if (initialIndex in previewList.indices) initialIndex else 0
         viewPager.setCurrentItem(safeIndex, false)
         tvHeader.text = previewList.getOrNull(safeIndex)?.name ?: ""
@@ -63,11 +65,27 @@ class MediaPreviewActivity : AppCompatActivity() {
             playAudioAtIndex(safeIndex)
         }
 
+        // Auto-play on forward AND backward scroll (Reels / Shorts style)
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 if (position in previewList.indices) {
                     tvHeader.text = previewList[position].name
-                    if (category == Category.AUDIO) {
+
+                    if (category == Category.VIDEOS) {
+                        // Purane chal rahe video ko roko
+                        currentActiveVideoView?.pause()
+                        
+                        // Current page ka VideoView dhund kar play karo
+                        viewPager.post {
+                            val holder = (viewPager.getChildAt(0) as? RecyclerView)
+                                ?.findViewHolderForAdapterPosition(position) as? PreviewAdapter.VH
+                            holder?.vvVideo?.let { vv ->
+                                currentActiveVideoView = vv
+                                vv.seekTo(0)
+                                vv.start()
+                            }
+                        }
+                    } else if (category == Category.AUDIO) {
                         playAudioAtIndex(position)
                     }
                 }
@@ -117,6 +135,8 @@ class MediaPreviewActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        currentActiveVideoView?.stopPlayback()
+        currentActiveVideoView = null
         mediaPlayer?.release()
         mediaPlayer = null
     }
@@ -151,11 +171,16 @@ class MediaPreviewActivity : AppCompatActivity() {
                 Category.VIDEOS -> {
                     holder.vvVideo.visibility = View.VISIBLE
                     val targetUri = item.uri ?: Uri.fromFile(item.file)
-                    val mc = MediaController(this@MediaPreviewActivity)
-                    mc.setAnchorView(holder.vvVideo)
-                    holder.vvVideo.setMediaController(mc)
                     holder.vvVideo.setVideoURI(targetUri)
-                    holder.vvVideo.start()
+
+                    // Looping auto-replay (Instagram reels style)
+                    holder.vvVideo.setOnPreparedListener { mp ->
+                        mp.isLooping = true
+                        if (holder.adapterPosition == viewPager.currentItem) {
+                            currentActiveVideoView = holder.vvVideo
+                            holder.vvVideo.start()
+                        }
+                    }
                 }
                 Category.DOCS -> {
                     holder.scrollDoc.visibility = View.VISIBLE
@@ -169,6 +194,11 @@ class MediaPreviewActivity : AppCompatActivity() {
                 }
                 else -> {}
             }
+        }
+
+        override fun onViewRecycled(holder: VH) {
+            super.onViewRecycled(holder)
+            holder.vvVideo.stopPlayback()
         }
 
         override fun getItemCount(): Int = items.size
