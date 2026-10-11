@@ -56,7 +56,7 @@ class ReceiveActivity : AppCompatActivity() {
     private fun generateQR(ssid: String, pass: String, ip: String) {
         try {
             // Standard Android Wi-Fi QR Format + IP Payload
-            val qrContent = "WIFI:T:WPA;S:$ssid;P:$pass;H:http://$ip:8888;;"
+            val qrContent = "WIFI:T:WPA;S:$ssid;P:$pass;H:http://192.168.49.1:6789;;"
 
             val writer = QRCodeWriter()
             val bitMatrix = writer.encode(qrContent, BarcodeFormat.QR_CODE, 512, 512)

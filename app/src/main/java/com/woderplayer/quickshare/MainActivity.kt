@@ -410,13 +410,13 @@ class MainActivity : AppCompatActivity() {
                         pass,
                         {
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                val gw = WifiAutoConnector.getGatewayIp(this@MainActivity); val finalUrl = if (gw != null) "http://$gw:8888/upload" else "$hostUrl/upload"; startUploadStream(finalUrl)
+                                val gw = WifiAutoConnector.getGatewayIp(this@MainActivity); val finalUrl = if (gw != null) "http://$gw:6789/upload" else "$hostUrl/upload"; startUploadStream(finalUrl)
                             }, 2500)
                         },
                         {
                             runOnUiThread {
                                 Toast.makeText(this, "Direct connection...", Toast.LENGTH_SHORT).show()
-                                val gw = WifiAutoConnector.getGatewayIp(this@MainActivity); val finalUrl = if (gw != null) "http://$gw:8888/upload" else "$hostUrl/upload"; startUploadStream(finalUrl)
+                                val gw = WifiAutoConnector.getGatewayIp(this@MainActivity); val finalUrl = if (gw != null) "http://$gw:6789/upload" else "$hostUrl/upload"; startUploadStream(finalUrl)
                             }
                         }
                     )
@@ -428,7 +428,7 @@ class MainActivity : AppCompatActivity() {
                 hostUrl = "http://$payload"
             }
 
-            val gw = WifiAutoConnector.getGatewayIp(this@MainActivity); val finalUrl = if (gw != null) "http://$gw:8888/upload" else "$hostUrl/upload"; startUploadStream(finalUrl)
+            val gw = WifiAutoConnector.getGatewayIp(this@MainActivity); val finalUrl = if (gw != null) "http://$gw:6789/upload" else "$hostUrl/upload"; startUploadStream(finalUrl)
         } catch (e: Throwable) {
             Toast.makeText(this, "Scan Error: ${e.message}", Toast.LENGTH_LONG).show()
         }

@@ -1,6 +1,6 @@
 {
-  "versionCode": 31,
-  "versionName": "1.0.31",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.31/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.31:\n1. Aligned clone hotspot architecture with Xender OAPService\n2. Standard port 6789 bindings\n3. Safe DhcpInfo live gateway resolution on sender"
+  "versionCode": 33,
+  "versionName": "1.0.33",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.33/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.33:\n1. Fixed wrong mobile data IP leak in QR\n2. Synced port 6789 across Server, QR, and Client\n3. Locked transfer to 192.168.49.1"
 }

@@ -27,7 +27,7 @@ class TransferReceiverService : Service() {
     private var server: ReceiverHttpServer? = null
 
     companion object {
-        const val PORT = 8888
+        const val PORT = 6789
         const val CHANNEL_ID = "transfer_receiver_channel"
         const val NOTIF_ID = 1001
         const val ACTION_START = "ACTION_START_RECEIVER"
