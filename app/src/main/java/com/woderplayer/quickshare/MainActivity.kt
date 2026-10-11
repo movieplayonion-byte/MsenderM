@@ -1,19 +1,12 @@
 package com.woderplayer.quickshare
 
 import android.Manifest
-import android.content.ContentUris
 import android.content.Intent
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.graphics.Color
-import android.media.ThumbnailUtils
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
-import android.provider.MediaStore
-import android.util.Size
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -21,16 +14,12 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.qrcode.QRCodeWriter
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
-import com.woderplayer.quickshare.engine.NetworkUtils
 import com.woderplayer.quickshare.engine.TransferReceiverService
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okio.BufferedSink
-import java.io.File
 import java.io.InputStream
 import java.net.URLEncoder
 
@@ -38,13 +27,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var tvStatus: TextView
     private lateinit var tvSelectedCount: TextView
+    private lateinit var etFuzzySearch: EditText
     private lateinit var gvContent: GridView
     private lateinit var lvContent: ListView
     private lateinit var btnSend: ImageButton
     private lateinit var btnReceive: ImageButton
-    private lateinit var btnCloseQr: Button
-    private lateinit var qrContainer: View
-    private lateinit var ivQrCode: ImageView
+
     private lateinit var progressContainer: View
     private lateinit var tvCurrentTransferFile: TextView
     private lateinit var tvTransferSpeed: TextView
@@ -58,12 +46,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabDocs: Button
 
     private var currentCategory = Category.APPS
-    private val allCategoryItems = mutableListOf<MediaItem>()
+    private val categoryCache = mutableMapOf<Category, List<MediaItem>>()
     private val displayedItems = mutableListOf<MediaItem>()
     private val selectedItemsMap = LinkedHashMap<String, MediaItem>()
+    private var currentSearchQuery = ""
 
     private lateinit var gridAdapter: GridMediaAdapter
-    private lateinit var listAdapter: AudioListAdapter
+    private lateinit var listAdapter: GenericListAdapter
     private val httpClient = OkHttpClient.Builder().build()
 
     private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
@@ -76,13 +65,12 @@ class MainActivity : AppCompatActivity() {
 
         tvStatus = findViewById(R.id.tvStatus)
         tvSelectedCount = findViewById(R.id.tvSelectedCount)
+        etFuzzySearch = findViewById(R.id.etFuzzySearch)
         gvContent = findViewById(R.id.gvContent)
         lvContent = findViewById(R.id.lvContent)
         btnSend = findViewById(R.id.btnSend)
         btnReceive = findViewById(R.id.btnReceive)
-        btnCloseQr = findViewById(R.id.btnCloseQr)
-        qrContainer = findViewById(R.id.qrContainer)
-        ivQrCode = findViewById(R.id.ivQrCode)
+
         progressContainer = findViewById(R.id.progressContainer)
         tvCurrentTransferFile = findViewById(R.id.tvCurrentTransferFile)
         tvTransferSpeed = findViewById(R.id.tvTransferSpeed)
@@ -96,11 +84,12 @@ class MainActivity : AppCompatActivity() {
         tabDocs = findViewById(R.id.tabDocs)
 
         gridAdapter = GridMediaAdapter()
-        listAdapter = AudioListAdapter()
+        listAdapter = GenericListAdapter()
         gvContent.adapter = gridAdapter
         lvContent.adapter = listAdapter
 
         setupTabs()
+        setupFuzzySearch()
         checkPermissionsAndLoad()
         AppUpdater.check(this, httpClient)
 
@@ -109,7 +98,8 @@ class MainActivity : AppCompatActivity() {
                 val mb = String.format("%.2f", size / (1024.0 * 1024.0))
                 tvStatus.text = "Received: $fileName ($mb MB)\nSaved in Downloads/MsenderM"
                 Toast.makeText(this, "Received: $fileName", Toast.LENGTH_SHORT).show()
-                loadMediaAsync()
+                categoryCache.clear()
+                loadCategoryAsync(currentCategory)
             }
         }
 
@@ -127,12 +117,24 @@ class MainActivity : AppCompatActivity() {
             qrScannerLauncher.launch(options)
         }
 
-        btnReceive.setOnClickListener { startReceiverEngine() }
-        btnCloseQr.setOnClickListener { qrContainer.visibility = View.GONE }
+        btnReceive.setOnClickListener {
+            startActivity(Intent(this, ReceiveActivity::class.java))
+        }
 
         if (intent?.getBooleanExtra("EXTRA_START_RECEIVE", false) == true) {
-            startReceiverEngine()
+            startActivity(Intent(this, ReceiveActivity::class.java))
         }
+    }
+
+    private fun setupFuzzySearch() {
+        etFuzzySearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                currentSearchQuery = s?.toString()?.trim() ?: ""
+                filterDisplayedItems()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
     }
 
     private fun setupTabs() {
@@ -147,7 +149,7 @@ class MainActivity : AppCompatActivity() {
             btn.setOnClickListener {
                 currentCategory = cat
                 updateTabStyles()
-                filterDisplayedItems()
+                loadCategoryAsync(cat)
             }
         }
     }
@@ -169,7 +171,8 @@ class MainActivity : AppCompatActivity() {
                 btn.setTextColor(Color.LTGRAY)
             }
         }
-        if (currentCategory == Category.AUDIO) {
+
+        if (currentCategory == Category.APPS || currentCategory == Category.AUDIO) {
             gvContent.visibility = View.GONE
             lvContent.visibility = View.VISIBLE
         } else {
@@ -194,82 +197,46 @@ class MainActivity : AppCompatActivity() {
         if (missing.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, missing.toTypedArray(), 102)
         } else {
-            loadMediaAsync()
+            loadCategoryAsync(currentCategory)
         }
     }
 
     override fun onRequestPermissionsResult(rc: Int, p: Array<out String>, res: IntArray) {
         super.onRequestPermissionsResult(rc, p, res)
-        loadMediaAsync()
+        loadCategoryAsync(currentCategory)
     }
 
-    private fun loadMediaAsync() {
-        Thread {
-            val list = mutableListOf<MediaItem>()
-            val pm = packageManager
-            for (app in pm.getInstalledApplications(PackageManager.GET_META_DATA)) {
-                if ((app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || app.packageName == packageName) {
-                    val label = pm.getApplicationLabel(app).toString()
-                    val icon = pm.getApplicationIcon(app)
-                    val f = File(app.sourceDir)
-                    list.add(MediaItem("app_inst_${app.packageName}", "$label.apk", f.length(), file = f, category = Category.APPS, isInstalledApp = true, appIcon = icon))
-                }
-            }
-            scanApkFiles(list)
-            queryMediaStore(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, Category.IMAGES, list)
-            queryMediaStore(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, Category.VIDEOS, list)
-            queryMediaStore(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, Category.AUDIO, list)
-            scanStrictDocuments(list)
+    private fun loadCategoryAsync(cat: Category) {
+        if (categoryCache.containsKey(cat)) {
+            filterDisplayedItems()
+            return
+        }
 
+        Thread {
+            val list = when (cat) {
+                Category.APPS -> MediaScanner.loadApps(this)
+                Category.IMAGES -> MediaScanner.loadImages(this)
+                Category.VIDEOS -> MediaScanner.loadVideos(this)
+                Category.AUDIO -> MediaScanner.loadAudio(this)
+                Category.DOCS -> MediaScanner.loadDocuments(this)
+            }
+            categoryCache[cat] = list
             runOnUiThread {
-                allCategoryItems.clear()
-                allCategoryItems.addAll(list)
-                updateTabStyles()
-                filterDisplayedItems()
+                if (currentCategory == cat) {
+                    filterDisplayedItems()
+                }
             }
         }.start()
     }
 
-    private fun scanApkFiles(targetList: MutableList<MediaItem>) {
-        try {
-            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            dir.walkTopDown().filter { it.isFile && it.extension.equals("apk", true) }.take(50).forEach { f ->
-                targetList.add(MediaItem("app_uninst_${f.absolutePath}", f.name, f.length(), file = f, category = Category.APPS))
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun scanStrictDocuments(targetList: MutableList<MediaItem>) {
-        try {
-            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val docExts = setOf("pdf", "doc", "docx", "txt", "xlsx", "xls", "ppt", "pptx", "zip", "rar")
-            dir.walkTopDown().filter { it.isFile && docExts.contains(it.extension.lowercase()) }.take(100).forEach { f ->
-                targetList.add(MediaItem("doc_${f.absolutePath}", f.name, f.length(), file = f, category = Category.DOCS))
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun queryMediaStore(uri: Uri, cat: Category, targetList: MutableList<MediaItem>) {
-        try {
-            val proj = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
-            contentResolver.query(uri, proj, null, null, "${MediaStore.MediaColumns._ID} DESC")?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-                val nCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-                val sCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(idCol)
-                    val name = cursor.getString(nCol) ?: "file_$id"
-                    val size = cursor.getLong(sCol)
-                    val itemUri = ContentUris.withAppendedId(uri, id)
-                    targetList.add(MediaItem("${cat}_$id", name, size, uri = itemUri, category = cat))
-                }
-            }
-        } catch (_: Exception) {}
-    }
-
     private fun filterDisplayedItems() {
+        val rawList = categoryCache[currentCategory] ?: emptyList()
         displayedItems.clear()
-        displayedItems.addAll(allCategoryItems.filter { it.category == currentCategory })
+        if (currentSearchQuery.isEmpty()) {
+            displayedItems.addAll(rawList)
+        } else {
+            displayedItems.addAll(rawList.filter { FuzzySearcher.matches(currentSearchQuery, it.name) })
+        }
         gridAdapter.notifyDataSetChanged()
         listAdapter.notifyDataSetChanged()
     }
@@ -277,31 +244,6 @@ class MainActivity : AppCompatActivity() {
     private fun updateSelectionHeader() {
         val totalMb = selectedItemsMap.values.sumOf { it.size } / (1024 * 1024)
         tvSelectedCount.text = "${selectedItemsMap.size} selected (~$totalMb MB)"
-    }
-
-    private fun startReceiverEngine() {
-        val intent = Intent(this, TransferReceiverService::class.java).apply {
-            action = TransferReceiverService.ACTION_START
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
-        val ip = NetworkUtils.getLocalIp()
-        val port = TransferReceiverService.PORT
-        showQrCode("MSENDER|http://$ip:$port")
-        tvStatus.text = "Receiver Active\nIP: http://$ip:$port"
-    }
-
-    private fun showQrCode(content: String) {
-        val bitMatrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, 512, 512)
-        val bmp = Bitmap.createBitmap(512, 512, Bitmap.Config.RGB_565)
-        for (x in 0 until 512) {
-            for (y in 0 until 512) {
-                bmp.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
-            }
-        }
-        runOnUiThread {
-            ivQrCode.setImageBitmap(bmp)
-            qrContainer.visibility = View.VISIBLE
-        }
     }
 
     private fun handleScannedQr(payload: String) {
@@ -313,10 +255,7 @@ class MainActivity : AppCompatActivity() {
         val transferList = selectedItemsMap.values.toList()
         if (transferList.isEmpty()) return
 
-        runOnUiThread {
-            progressContainer.visibility = View.VISIBLE
-            qrContainer.visibility = View.GONE
-        }
+        runOnUiThread { progressContainer.visibility = View.VISIBLE }
 
         Thread {
             try {
@@ -381,7 +320,7 @@ class MainActivity : AppCompatActivity() {
                     updateSelectionHeader()
                     gridAdapter.notifyDataSetChanged()
                     listAdapter.notifyDataSetChanged()
-                    tvStatus.text = "All files transferred!"
+                    tvStatus.text = "Transfer Finished! Selection Cleared."
                     Toast.makeText(this@MainActivity, "Files sent successfully!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
@@ -402,6 +341,17 @@ class MainActivity : AppCompatActivity() {
         listAdapter.notifyDataSetChanged()
     }
 
+    private fun openPreview(position: Int) {
+        val item = displayedItems.getOrNull(position) ?: return
+        if (item.category == Category.APPS) {
+            item.file?.let { MediaViewer.installApk(this, it) }
+            return
+        }
+        MediaPreviewActivity.previewList = displayedItems
+        MediaPreviewActivity.initialIndex = position
+        startActivity(Intent(this, MediaPreviewActivity::class.java))
+    }
+
     inner class GridMediaAdapter : BaseAdapter() {
         override fun getCount(): Int = displayedItems.size
         override fun getItem(p: Int): Any = displayedItems[p]
@@ -418,34 +368,22 @@ class MainActivity : AppCompatActivity() {
             cb.isChecked = selectedItemsMap.containsKey(item.id)
 
             when (item.category) {
-                Category.APPS -> {
-                    if (item.appIcon != null) iv.setImageDrawable(item.appIcon)
-                    else iv.setImageResource(android.R.drawable.sym_def_app_icon)
-                }
                 Category.IMAGES -> {
                     if (item.uri != null) iv.setImageURI(item.uri)
-                    else if (item.file != null) iv.setImageURI(Uri.fromFile(item.file))
+                    else if (item.file != null) iv.setImageURI(android.net.Uri.fromFile(item.file))
                 }
-                Category.VIDEOS -> {
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && item.uri != null) {
-                            iv.setImageBitmap(contentResolver.loadThumbnail(item.uri, Size(120, 120), null))
-                        } else if (item.file != null) {
-                            iv.setImageBitmap(ThumbnailUtils.createVideoThumbnail(item.file.absolutePath, MediaStore.Images.Thumbnails.MINI_KIND))
-                        }
-                    } catch (_: Exception) { iv.setImageResource(android.R.drawable.ic_media_play) }
-                }
+                Category.VIDEOS -> iv.setImageResource(android.R.drawable.ic_media_play)
                 Category.DOCS -> iv.setImageResource(android.R.drawable.ic_menu_agenda)
                 else -> iv.setImageResource(android.R.drawable.ic_menu_gallery)
             }
 
             cb.setOnClickListener { toggleSelection(item) }
-            v.setOnClickListener { MediaViewer.open(this@MainActivity, item) }
+            v.setOnClickListener { openPreview(p) }
             return v
         }
     }
 
-    inner class AudioListAdapter : BaseAdapter() {
+    inner class GenericListAdapter : BaseAdapter() {
         override fun getCount(): Int = displayedItems.size
         override fun getItem(p: Int): Any = displayedItems[p]
         override fun getItemId(p: Int): Long = p.toLong()
@@ -453,19 +391,17 @@ class MainActivity : AppCompatActivity() {
         override fun getView(p: Int, cv: View?, parent: ViewGroup?): View {
             val v = cv ?: LayoutInflater.from(this@MainActivity).inflate(R.layout.item_file, parent, false)
             val item = displayedItems[p]
-            v.findViewById<TextView>(R.id.tvItemTitle).text = item.name
-            v.findViewById<TextView>(R.id.tvItemSub).text = String.format("%.2f MB", item.size / (1024.0 * 1024.0))
+            val tvTitle = v.findViewById<TextView>(R.id.tvItemTitle)
+            val tvSub = v.findViewById<TextView>(R.id.tvItemSub)
             val cb = v.findViewById<CheckBox>(R.id.cbSelected)
+
+            tvTitle.text = if (item.isInstalledApp) "Install: ${item.name}" else item.name
+            tvSub.text = String.format("%.2f MB", item.size / (1024.0 * 1024.0))
             cb.isChecked = selectedItemsMap.containsKey(item.id)
+
             cb.setOnClickListener { toggleSelection(item) }
-            v.setOnClickListener { MediaViewer.open(this@MainActivity, item) }
+            v.setOnClickListener { openPreview(p) }
             return v
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        MediaViewer.release()
-        stopService(Intent(this, TransferReceiverService::class.java).apply { action = TransferReceiverService.ACTION_STOP })
     }
 }

@@ -4,7 +4,7 @@
     android:layout_height="match_parent"
     android:background="#0F141C">
 
-    <!-- Top Bar -->
+    <!-- Top Header Bar -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -39,6 +39,21 @@
                 android:textSize="13sp" />
         </RelativeLayout>
 
+        <!-- Fuzzy Search Bar Input -->
+        <EditText
+            android:id="@+id/etFuzzySearch"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:layout_marginTop="8dp"
+            android:background="#1C2333"
+            android:hint="🔍 Search files, apps, videos..."
+            android:textColorHint="#607D8B"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:singleLine="true" />
+
         <TextView
             android:id="@+id/tvStatus"
             android:layout_width="match_parent"
@@ -46,10 +61,10 @@
             android:text="Select files to send or tap Receive"
             android:textColor="#78909C"
             android:textSize="12sp"
-            android:layout_marginTop="2dp" />
+            android:layout_marginTop="4dp" />
     </LinearLayout>
 
-    <!-- Categories -->
+    <!-- Category Tabs -->
     <HorizontalScrollView
         android:id="@+id/tabScroll"
         android:layout_width="match_parent"
@@ -168,7 +183,7 @@
         </RelativeLayout>
     </LinearLayout>
 
-    <!-- Grid View for Images, Videos, Apps, Docs -->
+    <!-- Grid View for Images, Videos, Docs -->
     <GridView
         android:id="@+id/gvContent"
         android:layout_width="match_parent"
@@ -181,7 +196,7 @@
         android:padding="6dp"
         android:visibility="visible" />
 
-    <!-- List View for Audio Only -->
+    <!-- List View for Apps & Audio -->
     <ListView
         android:id="@+id/lvContent"
         android:layout_width="match_parent"
@@ -191,46 +206,6 @@
         android:divider="#1E2633"
         android:dividerHeight="1dp"
         android:visibility="gone" />
-
-    <!-- QR Container -->
-    <LinearLayout
-        android:id="@+id/qrContainer"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:background="#1C2333"
-        android:padding="16dp"
-        android:elevation="10dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/tvQrTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Scan to Connect"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:layout_marginBottom="8dp" />
-
-        <ImageView
-            android:id="@+id/ivQrCode"
-            android:layout_width="220dp"
-            android:layout_height="220dp"
-            android:background="#FFFFFF"
-            android:padding="8dp" />
-
-        <Button
-            android:id="@+id/btnCloseQr"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="Close"
-            android:textSize="11sp"
-            android:textColor="#CFD8DC"
-            android:backgroundTint="#37474F"
-            android:layout_marginTop="8dp" />
-    </LinearLayout>
 
     <!-- Floating Action Bar -->
     <LinearLayout

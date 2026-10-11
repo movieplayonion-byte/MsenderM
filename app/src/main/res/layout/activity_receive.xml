@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#0D1117"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="MsenderM Receiver"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <ImageView
+        android:id="@+id/ivFullQrCode"
+        android:layout_width="260dp"
+        android:layout_height="260dp"
+        android:background="#FFFFFF"
+        android:padding="12dp" />
+
+    <TextView
+        android:id="@+id/tvReceiveIp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#00E676"
+        android:textSize="14sp"
+        android:layout_marginTop="16dp"
+        android:text="Waiting for sender..." />
+
+    <Button
+        android:id="@+id/btnStopReceive"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:text="STOP RECEIVING"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#D32F2F"
+        android:layout_marginTop="28dp" />
+</LinearLayout>
