@@ -1,6 +1,6 @@
 {
   "versionCode": 2,
-  "versionName": "1.0.0",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/latest",
-  "releaseNotes": "Bug fixes, Xender grid preview, and in-app media playback support."
+  "versionName": "1.0.1",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.1/app-release.apk",
+  "releaseNotes": "Fix signature matching, fast fuzzy search, and media playback support."
 }

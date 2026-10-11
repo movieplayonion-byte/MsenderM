@@ -27,7 +27,7 @@ jobs:
       with:
         gradle-version: '8.4'
 
-    - name: Build Release APK
+    - name: Build Signed Release APK
       run: gradle assembleRelease --stacktrace
 
     - name: Upload Artifact
@@ -36,7 +36,7 @@ jobs:
         name: MsenderM-Release
         path: app/build/outputs/apk/release/*.apk
 
-    - name: Create GitHub Release
+    - name: Create or Update GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v1.0.1
