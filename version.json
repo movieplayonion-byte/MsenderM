@@ -1,6 +1,6 @@
 {
-  "versionCode": 22,
-  "versionName": "1.0.22",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.22/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.22:\n1. Synchronized transfer server port to 8888\n2. Added handshake stabilization buffer before upload stream"
+  "versionCode": 23,
+  "versionName": "1.0.23",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.23/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.23:\n1. Fixed parameter count in WifiAutoConnector call\n2. Clean 8888 port connection handshake buffer"
 }
