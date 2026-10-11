@@ -28,7 +28,7 @@ jobs:
         gradle-version: '8.4'
 
     - name: Build Release APK
-      run: ./gradlew assembleRelease --stacktrace || gradle assembleRelease --stacktrace
+      run: gradle assembleRelease --stacktrace
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
