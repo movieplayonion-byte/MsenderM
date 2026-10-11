@@ -1,6 +1,6 @@
 {
-  "versionCode": 17,
-  "versionName": "1.0.17",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.17/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.17:\n1. Universal Standard Wi-Fi QR format (WIFI:T:WPA;S:..;P:..)\n2. Fixed QR invalid scanner error on system cameras\n3. Instant background auto-connect on scan"
+  "versionCode": 18,
+  "versionName": "1.0.18",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.18/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.18:\n1. Fixed WIFI scheme crash in handleScannedQr\n2. Real-time Wi-Fi auto-connect and safe http upload"
 }

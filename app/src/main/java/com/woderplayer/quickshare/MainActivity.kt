@@ -385,8 +385,50 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleScannedQr(payload: String) {
-        val targetUrl = if (payload.startsWith("MSENDER|")) payload.removePrefix("MSENDER|") else payload
-        startUploadStream("$targetUrl/upload")
+        var hostUrl = "http://192.168.43.1:8080"
+        
+        if (payload.startsWith("WIFI:")) {
+            var ssid = ""
+            var pass = ""
+            val tokens = payload.removePrefix("WIFI:").removeSuffix(";;").split(";")
+            for (t in tokens) {
+                if (t.startsWith("S:")) ssid = t.removePrefix("S:")
+                if (t.startsWith("P:")) pass = t.removePrefix("P:")
+                if (t.startsWith("H:")) {
+                    val rawH = t.removePrefix("H:")
+                    hostUrl = if (rawH.startsWith("http://") || rawH.startsWith("https://")) rawH else "http://$rawH"
+                }
+            }
+            if (ssid.isNotEmpty()) {
+                WifiAutoConnector.connectToHotspot(this, ssid, pass, {
+                    runOnUiThread { startUploadStream("$hostUrl/upload") }
+                }, {
+                    runOnUiThread { startUploadStream("$hostUrl/upload") }
+                })
+                return
+            }
+        } else if (payload.startsWith("MSENDER|")) {
+            val parts = payload.split("|")
+            val ssid = if (parts.size > 1) parts[1] else ""
+            val pass = if (parts.size > 2) parts[2] else ""
+            val ip = if (parts.size > 3) parts[3] else "192.168.43.1"
+            val port = if (parts.size > 4) parts[4] else "8080"
+            hostUrl = "http://$ip:$port"
+            if (ssid.isNotEmpty()) {
+                WifiAutoConnector.connectToHotspot(this, ssid, pass, {
+                    runOnUiThread { startUploadStream("$hostUrl/upload") }
+                }, {
+                    runOnUiThread { startUploadStream("$hostUrl/upload") }
+                })
+                return
+            }
+        } else if (payload.startsWith("http://") || payload.startsWith("https://")) {
+            hostUrl = payload
+        } else {
+            hostUrl = "http://$payload"
+        }
+
+        startUploadStream("$hostUrl/upload")
     }
 
     private fun startUploadStream(uploadUrl: String) {
