@@ -4,40 +4,43 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
-    android:background="#0D1117"
-    android:padding="24dp">
+    android:padding="24dp"
+    android:background="#121212">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="MsenderM Receiver"
-        android:textColor="#FFFFFF"
+        android:text="Receive Files"
         android:textSize="22sp"
         android:textStyle="bold"
-        android:layout_marginBottom="16dp" />
+        android:textColor="#FFFFFF"
+        android:layout_marginBottom="24dp" />
 
     <ImageView
-        android:id="@+id/ivFullQrCode"
+        android:id="@+id/ivQrCode"
         android:layout_width="260dp"
         android:layout_height="260dp"
         android:background="#FFFFFF"
-        android:padding="12dp" />
+        android:padding="12dp"
+        android:contentDescription="QR Code" />
 
     <TextView
-        android:id="@+id/tvReceiveIp"
+        android:id="@+id/tvReceiveStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#00E676"
+        android:text="Waiting for sender to connect..."
         android:textSize="14sp"
-        android:layout_marginTop="16dp"
-        android:text="Waiting for sender..." />
+        android:textColor="#B0BEC5"
+        android:layout_marginTop="20dp"
+        android:gravity="center" />
 
     <Button
-        android:id="@+id/btnStopReceive"
-        android:layout_width="200dp"
+        android:id="@+id/btnBackReceive"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="STOP RECEIVING"
+        android:text="BACK"
         android:textColor="#FFFFFF"
-        android:backgroundTint="#D32F2F"
-        android:layout_marginTop="28dp" />
+        android:backgroundTint="#263238"
+        android:layout_marginTop="32dp" />
+
 </LinearLayout>
