@@ -1,6 +1,6 @@
 {
-  "versionCode": 99,
-  "versionName": "2.0.0",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v2.0.0/MsenderM-update.apk",
-  "releaseNotes": "1. Fixed Document Viewer\n2. Fixed Auto Update\n3. Big Files Cleaner added"
+  "versionCode": 6,
+  "versionName": "1.0.6",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.6/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.6:\n1. Strict mandatory update with in-app progress bar\n2. Fixed corrupted install bug\n3. Full Public Repo integration"
 }

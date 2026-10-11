@@ -30,7 +30,7 @@ jobs:
     - name: Build Signed Release APK
       run: gradle assembleRelease --stacktrace
 
-    - name: Copy Release APK with standard name
+    - name: Prepare APK Asset
       run: |
         mkdir -p release_out
         cp app/build/outputs/apk/release/*.apk release_out/MsenderM-update.apk
@@ -44,8 +44,8 @@ jobs:
     - name: Create or Update GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v2.0.0
-        name: "MsenderM Build v2.0.0"
+        tag_name: v1.0.6
+        name: "MsenderM Release v1.0.6"
         draft: false
         prerelease: false
         files: release_out/MsenderM-update.apk
