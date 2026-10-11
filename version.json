@@ -1,6 +1,6 @@
 {
-  "versionCode": 23,
-  "versionName": "1.0.23",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.23/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.23:\n1. Fixed parameter count in WifiAutoConnector call\n2. Clean 8888 port connection handshake buffer"
+  "versionCode": 24,
+  "versionName": "1.0.24",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.24/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.24:\n1. Fixed malformed closing braces and inner class scope in MainActivity\n2. Clean Wi-Fi auto-connection and upload handling"
 }

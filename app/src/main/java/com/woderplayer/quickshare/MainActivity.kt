@@ -384,7 +384,7 @@ class MainActivity : AppCompatActivity() {
         tvSelectedCount.text = "${selectedItemsMap.size} selected (~$totalMb MB)"
     }
 
-                private fun handleScannedQr(payload: String) {
+                    private fun handleScannedQr(payload: String) {
         try {
             var hostUrl = "http://192.168.43.1:8888"
 
@@ -420,27 +420,6 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     )
-                    return
-                }
-            } else if (payload.startsWith("http://") || payload.startsWith("https://")) {
-                hostUrl = payload
-            } else {
-                hostUrl = "http://$payload"
-            }
-
-            startUploadStream("$hostUrl/upload")
-        } catch (e: Throwable) {
-            Toast.makeText(this, "Scan Error: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }, 2500)
-                    }, {
-                        runOnUiThread { startUploadStream("$hostUrl/upload") }
-                    }, {
-                        runOnUiThread {
-                            Toast.makeText(this, "Direct connection...", Toast.LENGTH_SHORT).show()
-                            startUploadStream("$hostUrl/upload")
-                        }
-                    })
                     return
                 }
             } else if (payload.startsWith("http://") || payload.startsWith("https://")) {
