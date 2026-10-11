@@ -9,6 +9,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -30,10 +32,9 @@ object AppUpdater {
                     activity.packageManager.getPackageInfo(activity.packageName, 0).versionCode
                 }
 
-                val configUrl = "https://raw.githubusercontent.com/movieplayonion-byte/MsenderM/main/version.json?timestamp=${System.currentTimeMillis()}"
+                val configUrl = "https://raw.githubusercontent.com/movieplayonion-byte/MsenderM/main/version.json?nocache=${System.currentTimeMillis()}"
                 val req = Request.Builder()
                     .url(configUrl)
-                    .header("Cache-Control", "no-cache")
                     .build()
 
                 val resp = client.newCall(req).execute()
@@ -45,8 +46,10 @@ object AppUpdater {
                     val notes = json.optString("releaseNotes", "New update available!")
 
                     if (remoteVer > currentVersionCode) {
-                        activity.runOnUiThread {
-                            showDialog(activity, client, downloadUrl, notes)
+                        Handler(Looper.getMainLooper()).post {
+                            if (!activity.isFinishing && !activity.isDestroyed) {
+                                showDialog(activity, client, downloadUrl, notes)
+                            }
                         }
                     }
                 }
@@ -57,15 +60,19 @@ object AppUpdater {
     }
 
     private fun showDialog(activity: Activity, client: OkHttpClient, url: String, notes: String) {
-        AlertDialog.Builder(activity)
+        val builder = AlertDialog.Builder(activity)
             .setTitle("MsenderM Update Available")
             .setMessage(notes)
             .setCancelable(false)
-            .setPositiveButton("Update Now") { _, _ ->
+            .setPositiveButton("UPDATE NOW") { _, _ ->
                 checkPermissionAndDownload(activity, client, url)
             }
-            .setNegativeButton("Later", null)
-            .show()
+            .setNegativeButton("LATER") { d, _ ->
+                d.dismiss()
+            }
+
+        val dialog = builder.create()
+        dialog.show()
     }
 
     private fun checkPermissionAndDownload(activity: Activity, client: OkHttpClient, url: String) {
@@ -75,7 +82,7 @@ object AppUpdater {
                     data = Uri.parse("package:${activity.packageName}")
                 }
                 activity.startActivity(intent)
-                Toast.makeText(activity, "Allow installation and tap Update again", Toast.LENGTH_LONG).show()
+                Toast.makeText(activity, "Permission allow karke wapas Update dabayein", Toast.LENGTH_LONG).show()
                 return
             }
         }
@@ -87,27 +94,27 @@ object AppUpdater {
         val channelId = "update_download_channel"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "App Update Download", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(channelId, "MsenderM Update Download", NotificationManager.IMPORTANCE_LOW)
             notifManager.createNotificationChannel(channel)
         }
 
         val notifBuilder = NotificationCompat.Builder(activity, channelId)
             .setContentTitle("Downloading MsenderM")
-            .setContentText("0% downloaded")
+            .setContentText("Starting download...")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .setProgress(100, 0, false)
 
         notifManager.notify(2001, notifBuilder.build())
-        Toast.makeText(activity, "Update downloading...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(activity, "Downloading update in notification drawer...", Toast.LENGTH_SHORT).show()
 
         Thread {
             try {
                 val req = Request.Builder().url(url).build()
                 val resp = client.newCall(req).execute()
-                val body = resp.body ?: throw Exception("Empty body")
+                val body = resp.body ?: throw Exception("Empty file body")
                 val totalBytes = body.contentLength()
-                val apkFile = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "update.apk")
+                val apkFile = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "MsenderM-update.apk")
 
                 val inStream = body.byteStream()
                 val outStream = FileOutputStream(apkFile)
@@ -136,7 +143,7 @@ object AppUpdater {
             } catch (e: Exception) {
                 notifManager.cancel(2001)
                 activity.runOnUiThread {
-                    Toast.makeText(activity, "Download failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(activity, "Update Download Failed: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }.start()

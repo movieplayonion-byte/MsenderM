@@ -1,6 +1,6 @@
 {
   "versionCode": 99,
   "versionName": "2.0.0",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/latest/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM Big Update:\n1. Fixed PDF & Document viewer\n2. Real-time downloading progress bar\n3. Storage Cleaner & Big Files support"
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v2.0.0/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM Big Update:\n1. Fixed Document Viewer (PDFs & Docs open properly)\n2. Added Big Files Cleaner (>25MB)\n3. Fast multi-select and delete options\n4. Real-time background update downloader"
 }
