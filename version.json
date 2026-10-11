@@ -1,6 +1,6 @@
 {
-  "versionCode": 18,
-  "versionName": "1.0.18",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.18/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.18:\n1. Fixed WIFI scheme crash in handleScannedQr\n2. Real-time Wi-Fi auto-connect and safe http upload"
+  "versionCode": 19,
+  "versionName": "1.0.19",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.19/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.19:\n1. Fixed crash on QR scan with safe error boundaries\n2. Robust Wi-Fi auto-connection with graceful fallback\n3. Enforced CHANGE_NETWORK_STATE permissions"
 }

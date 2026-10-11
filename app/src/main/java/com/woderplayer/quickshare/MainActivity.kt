@@ -384,24 +384,47 @@ class MainActivity : AppCompatActivity() {
         tvSelectedCount.text = "${selectedItemsMap.size} selected (~$totalMb MB)"
     }
 
-    private fun handleScannedQr(payload: String) {
-        var hostUrl = "http://192.168.43.1:8080"
-        
-        if (payload.startsWith("WIFI:")) {
-            var ssid = ""
-            var pass = ""
-            val tokens = payload.removePrefix("WIFI:").removeSuffix(";;").split(";")
-            for (t in tokens) {
-                if (t.startsWith("S:")) ssid = t.removePrefix("S:")
-                if (t.startsWith("P:")) pass = t.removePrefix("P:")
-                if (t.startsWith("H:")) {
-                    val rawH = t.removePrefix("H:")
-                    hostUrl = if (rawH.startsWith("http://") || rawH.startsWith("https://")) rawH else "http://$rawH"
+        private fun handleScannedQr(payload: String) {
+        try {
+            var hostUrl = "http://192.168.43.1:8080"
+
+            if (payload.startsWith("WIFI:")) {
+                var ssid = ""
+                var pass = ""
+                val clean = payload.removePrefix("WIFI:").trimEnd { it == ";" }
+                val tokens = clean.split(";")
+                for (t in tokens) {
+                    if (t.startsWith("S:")) ssid = t.removePrefix("S:")
+                    if (t.startsWith("P:")) pass = t.removePrefix("P:")
+                    if (t.startsWith("H:")) {
+                        val h = t.removePrefix("H:")
+                        hostUrl = if (h.startsWith("http://") || h.startsWith("https://")) h else "http://$h"
+                    }
                 }
+
+                if (ssid.isNotEmpty()) {
+                    Toast.makeText(this, "Connecting to $ssid...", Toast.LENGTH_SHORT).show()
+                    WifiAutoConnector.connectToHotspot(applicationContext, ssid, pass, {
+                        runOnUiThread { startUploadStream("$hostUrl/upload") }
+                    }, {
+                        runOnUiThread {
+                            Toast.makeText(this, "Auto-connect failed, connecting direct...", Toast.LENGTH_SHORT).show()
+                            startUploadStream("$hostUrl/upload")
+                        }
+                    })
+                    return
+                }
+            } else if (payload.startsWith("http://") || payload.startsWith("https://")) {
+                hostUrl = payload
+            } else {
+                hostUrl = "http://$payload"
             }
-            if (ssid.isNotEmpty()) {
-                WifiAutoConnector.connectToHotspot(this, ssid, pass, {
-                    runOnUiThread { startUploadStream("$hostUrl/upload") }
+
+            startUploadStream("$hostUrl/upload")
+        } catch (e: Throwable) {
+            Toast.makeText(this, "Scan Error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
                 }, {
                     runOnUiThread { startUploadStream("$hostUrl/upload") }
                 })

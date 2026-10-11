@@ -19,51 +19,54 @@ object WifiAutoConnector {
         onConnected: () -> Unit,
         onFailed: (String) -> Unit
     ) {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val specifier = WifiNetworkSpecifier.Builder()
-                .setSsid(ssid)
-                .apply {
-                    if (pass.isNotEmpty()) {
-                        setWpa2Passphrase(pass)
-                    }
-                }
-                .build()
-
-            val request = NetworkRequest.Builder()
-                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-                .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) // Purely offline transfer
-                .setNetworkSpecifier(specifier)
-                .build()
-
-            val callback = object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) {
-                    super.onAvailable(network)
-                    cm.bindProcessToNetwork(network) // Bind app traffic to this hotspot socket
-                    onConnected()
-                }
-
-                override fun onUnavailable() {
-                    super.onUnavailable()
-                    onFailed("Connection timeout or rejected")
-                }
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            if (cm == null) {
+                onConnected()
+                return
             }
 
-            activeCallback = callback
-            cm.requestNetwork(request, callback)
-        } else {
-            // Older Android fallback
-            onConnected()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val specifierBuilder = WifiNetworkSpecifier.Builder().setSsid(ssid)
+                if (pass.isNotEmpty()) {
+                    specifierBuilder.setWpa2Passphrase(pass)
+                }
+
+                val request = NetworkRequest.Builder()
+                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                    .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .setNetworkSpecifier(specifierBuilder.build())
+                    .build()
+
+                val callback = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        try {
+                            cm.bindProcessToNetwork(network)
+                        } catch (_: Throwable) {}
+                        onConnected()
+                    }
+
+                    override fun onUnavailable() {
+                        onFailed("Hotspot unavailable")
+                    }
+                }
+
+                activeCallback = callback
+                cm.requestNetwork(request, callback)
+            } else {
+                onConnected()
+            }
+        } catch (e: Throwable) {
+            onFailed(e.message ?: "Connect error")
         }
     }
 
     fun releaseNetwork(context: Context) {
         try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            activeCallback?.let { cm.unregisterNetworkCallback(it) }
-            cm.bindProcessToNetwork(null)
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            activeCallback?.let { cm?.unregisterNetworkCallback(it) }
+            cm?.bindProcessToNetwork(null)
             activeCallback = null
-        } catch (_: Exception) {}
+        } catch (_: Throwable) {}
     }
 }
