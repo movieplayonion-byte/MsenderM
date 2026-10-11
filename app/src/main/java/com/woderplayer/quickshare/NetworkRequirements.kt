@@ -25,52 +25,16 @@ object NetworkRequirements {
         return wm.isWifiEnabled
     }
 
-    fun isHotspotEnabled(context: Context): Boolean {
-        return try {
-            val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val method = wm.javaClass.getDeclaredMethod("isWifiApEnabled")
-            method.isAccessible = true
-            method.invoke(wm) as? Boolean ?: false
-        } catch (_: Exception) {
-            false
-        }
-    }
-
+    // SENDER: Wi-Fi + Location required (taaki clone hotspot ko scan karke auto-connect kare)
     fun ensureSender(activity: Activity, onPassed: () -> Unit) {
         if (!isLocationEnabled(activity)) {
             showDialog(
                 activity,
                 "Location Required",
-                "File send karne ke liye Location (GPS) on karna mandatory hai.",
+                "Receiver ka Hotspot scan aur connect karne ke liye Location ON karein.",
                 "TURN ON LOCATION",
                 Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             ) { ensureSender(activity, onPassed) }
-            return
-        }
-
-        if (!isHotspotEnabled(activity)) {
-            showDialog(
-                activity,
-                "Hotspot Required",
-                "Receiver ko connect karne ke liye Personal Hotspot on karna zaroori hai.",
-                "OPEN HOTSPOT SETTINGS",
-                Intent("android.settings.TETHER_SETTINGS")
-            ) { ensureSender(activity, onPassed) }
-            return
-        }
-
-        onPassed()
-    }
-
-    fun ensureReceiver(activity: Activity, onPassed: () -> Unit) {
-        if (!isLocationEnabled(activity)) {
-            showDialog(
-                activity,
-                "Location Required",
-                "Device search aur QR connect ke liye Location on karna mandatory hai.",
-                "TURN ON LOCATION",
-                Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-            ) { ensureReceiver(activity, onPassed) }
             return
         }
 
@@ -78,9 +42,25 @@ object NetworkRequirements {
             showDialog(
                 activity,
                 "Wi-Fi Required",
-                "Sender ke hotspot se offline connect hone ke liye Wi-Fi on karein.",
+                "Receiver ke clone hotspot se connect hone ke liye Wi-Fi ON karein.",
                 "TURN ON WI-FI",
                 Intent(Settings.ACTION_WIFI_SETTINGS)
+            ) { ensureSender(activity, onPassed) }
+            return
+        }
+
+        onPassed()
+    }
+
+    // RECEIVER: Location required (taaki startLocalOnlyHotspot ban sake)
+    fun ensureReceiver(activity: Activity, onPassed: () -> Unit) {
+        if (!isLocationEnabled(activity)) {
+            showDialog(
+                activity,
+                "Location Required",
+                "Secure clone Hotspot create karne ke liye Location ON karein.",
+                "TURN ON LOCATION",
+                Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             ) { ensureReceiver(activity, onPassed) }
             return
         }

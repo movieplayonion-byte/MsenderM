@@ -8,8 +8,6 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
-import java.net.Inet4Address
-import java.net.NetworkInterface
 
 class ReceiveActivity : AppCompatActivity() {
 
@@ -24,42 +22,41 @@ class ReceiveActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvReceiveStatus)
         val btnBack = findViewById<Button>(R.id.btnBackReceive)
 
-        btnBack.setOnClickListener { finish() }
+        btnBack.setOnClickListener {
+            HotspotManager.stopHotspot()
+            finish()
+        }
     }
 
     override fun onResume() {
         super.onResume()
         NetworkRequirements.ensureReceiver(this) {
-            generateAndDisplayQR()
+            setupReceiverHotspot()
         }
     }
 
-    private fun getDeviceIp(): String {
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                val addresses = networkInterface.inetAddresses
-                while (addresses.hasMoreElements()) {
-                    val address = addresses.nextElement()
-                    if (!address.isLoopbackAddress && address is Inet4Address) {
-                        val host = address.hostAddress ?: ""
-                        if (host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("172.")) {
-                            return host
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return "192.168.43.1"
+    override fun onDestroy() {
+        super.onDestroy()
+        HotspotManager.stopHotspot()
     }
 
-    private fun generateAndDisplayQR() {
+    private fun setupReceiverHotspot() {
+        tvStatus.text = "Starting clone hotspot..."
+        HotspotManager.startHotspot(
+            this,
+            onSuccess = { ssid, pass, ip ->
+                generateQR(ssid, pass, ip)
+            },
+            onError = { err ->
+                tvStatus.text = "Error: $err"
+            }
+        )
+    }
+
+    private fun generateQR(ssid: String, pass: String, ip: String) {
         try {
-            val ip = getDeviceIp()
-            val port = 8080
-            // OkHttp requires valid http:// scheme
-            val qrContent = "http://$ip:$port"
+            // Format: WIFI|SSID|PASSWORD|IP|PORT
+            val qrContent = "MSENDER|$ssid|$pass|$ip|8080"
 
             val writer = QRCodeWriter()
             val bitMatrix = writer.encode(qrContent, BarcodeFormat.QR_CODE, 512, 512)
@@ -74,9 +71,9 @@ class ReceiveActivity : AppCompatActivity() {
             }
 
             ivQrCode.setImageBitmap(bitmap)
-            tvStatus.text = "Receiver Ready (IP: $ip)\nScan QR to send files offline"
+            tvStatus.text = "Hotspot: $ssid\nScan with sender to auto-connect"
         } catch (e: Exception) {
-            tvStatus.text = "Failed to generate QR: ${e.message}"
+            tvStatus.text = "QR Error: ${e.message}"
         }
     }
 }
