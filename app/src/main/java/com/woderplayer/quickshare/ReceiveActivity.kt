@@ -14,7 +14,15 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.woderplayer.quickshare.engine.NetworkUtils
 import com.woderplayer.quickshare.engine.TransferReceiverService
 
-class ReceiveActivity : AppCompatActivity() {
+class ReceiveActivity :
+
+    override fun onResume() {
+        super.onResume()
+        NetworkRequirements.ensureReceiverRequirements(this) {
+            // Requirements satisfied
+        }
+    }
+ AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

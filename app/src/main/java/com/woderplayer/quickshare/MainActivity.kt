@@ -143,11 +143,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnReceive.setOnClickListener {
-            startActivity(Intent(this, ReceiveActivity::class.java))
+            NetworkRequirements.ensureReceiverRequirements(this) { startActivity(Intent(this, ReceiveActivity::class.java)) }
         }
 
         if (intent?.getBooleanExtra("EXTRA_START_RECEIVE", false) == true) {
-            startActivity(Intent(this, ReceiveActivity::class.java))
+            NetworkRequirements.ensureReceiverRequirements(this) { startActivity(Intent(this, ReceiveActivity::class.java)) }
         }
     }
 
