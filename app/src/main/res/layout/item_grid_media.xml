@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="115dp"
-    android:layout_margin="3dp"
-    android:background="#1C2333">
+    android:layout_height="100dp"
+    android:layout_margin="1.5dp"
+    android:background="#161B22">
 
     <ImageView
         android:id="@+id/ivThumbnail"
@@ -11,29 +11,19 @@
         android:layout_height="match_parent"
         android:scaleType="centerCrop" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="32dp"
-        android:layout_gravity="bottom"
-        android:background="#99000000" />
-
-    <TextView
-        android:id="@+id/tvGridTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:paddingStart="4dp"
-        android:paddingEnd="20dp"
-        android:paddingBottom="4dp"
-        android:singleLine="true"
-        android:ellipsize="middle"
-        android:textColor="#FFFFFF"
-        android:textSize="11sp" />
+    <ImageView
+        android:id="@+id/ivPlayBadge"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_gravity="center"
+        android:src="@android:drawable/ic_media_play"
+        android:visibility="gone" />
 
     <CheckBox
         android:id="@+id/cbGridSelected"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
         android:layout_gravity="top|end"
+        android:layout_margin="2dp"
         android:buttonTint="#00E676" />
 </FrameLayout>

@@ -1,6 +1,6 @@
 {
-  "versionCode": 2,
-  "versionName": "1.0.2",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.2/app-release.apk",
-  "releaseNotes": "1. Lag bilkul khatam (Glide thumbnail caching)\n2. Fast fuzzy search support\n3. Full-screen media preview & player\n4. Real-time transfer & update notifications"
+  "versionCode": 3,
+  "versionName": "1.0.3",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.3/app-release.apk",
+  "releaseNotes": "Critical Fixes:\n1. Fixed all crashes on media preview and receive button\n2. Fixed document tab scanning across all storage\n3. Smooth Glide caching for zero lag"
 }

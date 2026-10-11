@@ -4,8 +4,11 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
@@ -15,6 +18,7 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.bumptech.glide.Glide
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.woderplayer.quickshare.engine.TransferReceiverService
@@ -192,19 +196,35 @@ class MainActivity : AppCompatActivity() {
         } else {
             perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
+
         val missing = perms.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, missing.toTypedArray(), 102)
         } else {
-            loadCategoryAsync(currentCategory)
+            checkStorageManagerPermission()
         }
+    }
+
+    private fun checkStorageManagerPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                    Toast.makeText(this, "Enable All Files Access for reading Documents!", Toast.LENGTH_LONG).show()
+                } catch (_: Exception) {}
+            }
+        }
+        loadCategoryAsync(currentCategory)
     }
 
     override fun onRequestPermissionsResult(rc: Int, p: Array<out String>, res: IntArray) {
         super.onRequestPermissionsResult(rc, p, res)
-        loadCategoryAsync(currentCategory)
+        checkStorageManagerPermission()
     }
 
     private fun loadCategoryAsync(cat: Category) {
@@ -362,20 +382,21 @@ class MainActivity : AppCompatActivity() {
             val v = cv ?: LayoutInflater.from(this@MainActivity).inflate(R.layout.item_grid_media, parent, false)
             val item = displayedItems[p]
             val iv = v.findViewById<ImageView>(R.id.ivThumbnail)
-            val tv = v.findViewById<TextView>(R.id.tvGridTitle)
+            val badge = v.findViewById<ImageView>(R.id.ivPlayBadge)
             val cb = v.findViewById<CheckBox>(R.id.cbGridSelected)
 
-            tv.text = item.name
             cb.isChecked = selectedItemsMap.containsKey(item.id)
+            badge.visibility = if (item.category == Category.VIDEOS) View.VISIBLE else View.GONE
 
-            when (item.category) {
-                Category.IMAGES -> {
-                    if (item.uri != null) iv.setImageURI(item.uri)
-                    else if (item.file != null) iv.setImageURI(android.net.Uri.fromFile(item.file))
-                }
-                Category.VIDEOS -> iv.setImageResource(android.R.drawable.ic_media_play)
-                Category.DOCS -> iv.setImageResource(android.R.drawable.ic_menu_agenda)
-                else -> iv.setImageResource(android.R.drawable.ic_menu_gallery)
+            if (item.category == Category.DOCS) {
+                iv.setImageResource(android.R.drawable.ic_menu_agenda)
+            } else {
+                val model = item.uri ?: item.file
+                Glide.with(this@MainActivity)
+                    .load(model)
+                    .centerCrop()
+                    .placeholder(android.R.drawable.ic_menu_gallery)
+                    .into(iv)
             }
 
             cb.setOnClickListener { toggleSelection(item) }

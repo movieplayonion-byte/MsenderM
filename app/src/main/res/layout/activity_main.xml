@@ -190,7 +190,7 @@
         android:layout_height="match_parent"
         android:layout_below="@id/progressContainer"
         android:layout_above="@id/bottomBar"
-        android:numColumns="3"
+        android:numColumns="4"
         android:verticalSpacing="4dp"
         android:horizontalSpacing="4dp"
         android:padding="6dp"

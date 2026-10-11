@@ -7,7 +7,7 @@ import android.app.Service
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.media.MediaScannerConnection
+import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -29,6 +29,7 @@ class TransferReceiverService : Service() {
     companion object {
         const val PORT = 8888
         const val CHANNEL_ID = "transfer_receiver_channel"
+        const val NOTIF_ID = 1001
         const val ACTION_START = "ACTION_START_RECEIVER"
         const val ACTION_STOP = "ACTION_STOP_RECEIVER"
         var onFileReceivedListener: ((String, Long) -> Unit)? = null
@@ -41,16 +42,20 @@ class TransferReceiverService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_START) {
-            val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("MsenderM Receiver")
-                .setContentText("Listening on port $PORT for incoming files...")
-                .setSmallIcon(android.R.drawable.stat_sys_download)
-                .build()
-            startForeground(1001, notification)
+            val notification = createNotification("MsenderM Receiver", "Ready for incoming files...", 0, 0)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                } else {
+                    startForeground(NOTIF_ID, notification)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
 
             try {
                 if (server == null) {
-                    server = ReceiverHttpServer(PORT, applicationContext)
+                    server = ReceiverHttpServer(PORT, applicationContext, this)
                     server?.start()
                 }
             } catch (e: Exception) {
@@ -65,6 +70,26 @@ class TransferReceiverService : Service() {
         return START_NOT_STICKY
     }
 
+    fun updateNotification(title: String, text: String, max: Int, progress: Int) {
+        val notifManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notif = createNotification(title, text, max, progress)
+        notifManager.notify(NOTIF_ID, notif)
+    }
+
+    private fun createNotification(title: String, text: String, max: Int, progress: Int): Notification {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+
+        if (max > 0) {
+            builder.setProgress(max, progress, false)
+        }
+        return builder.build()
+    }
+
     override fun onDestroy() {
         server?.stop()
         super.onDestroy()
@@ -76,46 +101,47 @@ class TransferReceiverService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "File Receiver Service",
+                "MsenderM Transfer Service",
                 NotificationManager.IMPORTANCE_LOW
-            )
+            ).apply {
+                description = "Transfer status and progress"
+                setSound(null, null)
+                enableVibration(false)
+            }
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 }
 
-class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) {
+class ReceiverHttpServer(
+    port: Int,
+    private val context: Context,
+    private val service: TransferReceiverService
+) : NanoHTTPD(port) {
 
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri ?: ""
-        if (uri == "/ping") {
-            return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "PONG")
-        }
+        if (uri == "/ping") return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "PONG")
 
         if (session.method == Method.POST) {
             return try {
-                val rawName = session.headers["x-filename"] 
-                    ?: session.parameters["filename"]?.firstOrNull() 
-                    ?: "file_${System.currentTimeMillis()}"
+                val rawName = session.headers["x-filename"] ?: "file_${System.currentTimeMillis()}"
                 val fileName = URLDecoder.decode(rawName, "UTF-8")
-
                 val totalLen = session.headers["content-length"]?.toLongOrNull() ?: 0L
                 val inputStream = session.inputStream
 
                 val isSaved = saveIncomingStream(fileName, inputStream, totalLen)
-
                 if (isSaved) {
                     TransferReceiverService.onFileReceivedListener?.invoke(fileName, totalLen)
+                    service.updateNotification("MsenderM Receiver", "Received: $fileName", 0, 0)
                     newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "SAVED")
                 } else {
                     newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Save Failed")
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
                 newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, e.message ?: "Error")
             }
         }
-
         return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "MsenderM Ready")
     }
 
@@ -129,7 +155,7 @@ class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(po
                 val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 if (uri != null) {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
-                        copyBytes(inputStream, out, length)
+                        copyBytesWithProgress(fileName, inputStream, out, length)
                     }
                     true
                 } else {
@@ -138,8 +164,7 @@ class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(po
             } else {
                 saveFallback(fileName, inputStream, length)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (_: Exception) {
             saveFallback(fileName, inputStream, length)
         }
     }
@@ -149,27 +174,32 @@ class ReceiverHttpServer(port: Int, private val context: Context) : NanoHTTPD(po
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "MsenderM")
             if (!dir.exists()) dir.mkdirs()
             val target = File(dir, fileName)
-            FileOutputStream(target).use { out ->
-                copyBytes(inputStream, out, length)
-            }
-            MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), null, null)
+            FileOutputStream(target).use { out -> copyBytesWithProgress(fileName, inputStream, out, length) }
             true
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (_: Exception) {
             false
         }
     }
 
-    private fun copyBytes(inStream: InputStream, outStream: OutputStream, expectedLength: Long) {
+    private fun copyBytesWithProgress(fileName: String, inStream: InputStream, outStream: OutputStream, expectedLength: Long) {
         val buffer = ByteArray(64 * 1024)
         var remaining = if (expectedLength > 0) expectedLength else Long.MAX_VALUE
+        var transferred = 0L
+        var lastNotifTime = System.currentTimeMillis()
+
         while (remaining > 0) {
             val toRead = if (remaining < buffer.size) remaining.toInt() else buffer.size
             val bytesRead = inStream.read(buffer, 0, toRead)
             if (bytesRead == -1) break
             outStream.write(buffer, 0, bytesRead)
-            if (expectedLength > 0) {
-                remaining -= bytesRead
+            transferred += bytesRead
+            if (expectedLength > 0) remaining -= bytesRead
+
+            val now = System.currentTimeMillis()
+            if (now - lastNotifTime >= 500 && expectedLength > 0) {
+                val pct = ((transferred * 100) / expectedLength).toInt()
+                service.updateNotification("Receiving $fileName", "$pct%", 100, pct)
+                lastNotifTime = now
             }
         }
         outStream.flush()
@@ -189,16 +219,6 @@ object NetworkUtils {
                             if (host.indexOf(':') < 0 && (host.startsWith("192.168.") || host.startsWith("10."))) {
                                 return host
                             }
-                        }
-                    }
-                }
-            }
-            for (intf in interfaces) {
-                for (addr in Collections.list(intf.inetAddresses)) {
-                    if (!addr.isLoopbackAddress) {
-                        val host = addr.hostAddress ?: ""
-                        if (host.indexOf(':') < 0 && !host.startsWith("127.")) {
-                            return host
                         }
                     }
                 }

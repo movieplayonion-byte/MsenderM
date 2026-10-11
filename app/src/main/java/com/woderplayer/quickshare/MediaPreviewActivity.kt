@@ -10,6 +10,7 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
+import com.bumptech.glide.Glide
 import java.io.File
 
 class MediaPreviewActivity : AppCompatActivity() {
@@ -39,6 +40,12 @@ class MediaPreviewActivity : AppCompatActivity() {
 
         btnBack.setOnClickListener { finish() }
 
+        if (previewList.isEmpty()) {
+            Toast.makeText(this, "No media to preview", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
         val category = previewList.firstOrNull()?.category ?: Category.IMAGES
         if (category == Category.VIDEOS) {
             viewPager.orientation = ViewPager2.ORIENTATION_VERTICAL
@@ -47,11 +54,13 @@ class MediaPreviewActivity : AppCompatActivity() {
         }
 
         viewPager.adapter = PreviewAdapter(previewList)
-        viewPager.setCurrentItem(initialIndex, false)
+        val safeIndex = if (initialIndex in previewList.indices) initialIndex else 0
+        viewPager.setCurrentItem(safeIndex, false)
+        tvHeader.text = previewList.getOrNull(safeIndex)?.name ?: ""
 
         if (category == Category.AUDIO) {
             audioPanel.visibility = View.VISIBLE
-            playAudioAtIndex(initialIndex)
+            playAudioAtIndex(safeIndex)
         }
 
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
@@ -79,16 +88,12 @@ class MediaPreviewActivity : AppCompatActivity() {
 
         btnPrev.setOnClickListener {
             val cur = viewPager.currentItem
-            if (cur > 0) {
-                viewPager.currentItem = cur - 1
-            }
+            if (cur > 0) viewPager.currentItem = cur - 1
         }
 
         btnNext.setOnClickListener {
             val cur = viewPager.currentItem
-            if (cur < previewList.size - 1) {
-                viewPager.currentItem = cur + 1
-            }
+            if (cur < previewList.size - 1) viewPager.currentItem = cur + 1
         }
     }
 
@@ -138,8 +143,10 @@ class MediaPreviewActivity : AppCompatActivity() {
             when (item.category) {
                 Category.IMAGES -> {
                     holder.ivImage.visibility = View.VISIBLE
-                    if (item.uri != null) holder.ivImage.setImageURI(item.uri)
-                    else if (item.file != null) holder.ivImage.setImageURI(Uri.fromFile(item.file))
+                    Glide.with(this@MediaPreviewActivity)
+                        .load(item.uri ?: item.file)
+                        .fitCenter()
+                        .into(holder.ivImage)
                 }
                 Category.VIDEOS -> {
                     holder.vvVideo.visibility = View.VISIBLE
@@ -157,7 +164,7 @@ class MediaPreviewActivity : AppCompatActivity() {
                         val text = stream?.bufferedReader()?.use { it.readText() } ?: "Document Content"
                         holder.tvDoc.text = if (text.length > 5000) text.substring(0, 5000) + "\n...[Truncated]" else text
                     } catch (_: Exception) {
-                        holder.tvDoc.text = "Binary / Encrypted Document ready for sharing."
+                        holder.tvDoc.text = "Document ready for sharing."
                     }
                 }
                 else -> {}
