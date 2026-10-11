@@ -24,7 +24,7 @@ class MediaPreviewActivity : AppCompatActivity() {
     private lateinit var audioPanel: View
     private lateinit var btnPlayPause: Button
     private var mediaPlayer: MediaPlayer? = null
-    private var isPlaying = false
+    private var isPlaying: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,13 +59,16 @@ class MediaPreviewActivity : AppCompatActivity() {
             override fun onPageSelected(position: Int) {
                 if (position in previewList.indices) {
                     tvHeader.text = previewList[position].name
-                    if (category == Category.AUDIO) playAudioAtIndex(position)
+                    if (category == Category.AUDIO) {
+                        playAudioAtIndex(position)
+                    }
                 }
             }
         })
 
         btnPlayPause.setOnClickListener {
-            mediaPlayer?.let { player ->
+            val player = mediaPlayer
+            if (player != null) {
                 if (player.isPlaying) {
                     player.pause()
                     btnPlayPause.text = "▶ PLAY"
@@ -80,12 +83,16 @@ class MediaPreviewActivity : AppCompatActivity() {
 
         btnPrev.setOnClickListener {
             val cur = viewPager.currentItem
-            if (cur > 0) viewPager.currentItem = cur - 1
+            if (cur > 0) {
+                viewPager.currentItem = cur - 1
+            }
         }
 
         btnNext.setOnClickListener {
             val cur = viewPager.currentItem
-            if (cur < previewList.size - 1) viewPager.currentItem = cur + 1
+            if (cur < previewList.size - 1) {
+                viewPager.currentItem = cur + 1
+            }
         }
     }
 
