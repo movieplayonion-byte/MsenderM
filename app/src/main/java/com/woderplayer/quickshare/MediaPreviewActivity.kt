@@ -24,7 +24,6 @@ class MediaPreviewActivity : AppCompatActivity() {
     private lateinit var audioPanel: View
     private lateinit var btnPlayPause: Button
     private var mediaPlayer: MediaPlayer? = null
-    private var isPlaying: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,16 +66,13 @@ class MediaPreviewActivity : AppCompatActivity() {
         })
 
         btnPlayPause.setOnClickListener {
-            val player = mediaPlayer
-            if (player != null) {
+            mediaPlayer?.let { player ->
                 if (player.isPlaying) {
                     player.pause()
                     btnPlayPause.text = "▶ PLAY"
-                    isPlaying = false
                 } else {
                     player.start()
                     btnPlayPause.text = "⏸ PAUSE"
-                    isPlaying = true
                 }
             }
         }
@@ -108,7 +104,6 @@ class MediaPreviewActivity : AppCompatActivity() {
                     setDataSource(temp.absolutePath)
                     prepare()
                     start()
-                    isPlaying = true
                     btnPlayPause.text = "⏸ PAUSE"
                 }
             }
