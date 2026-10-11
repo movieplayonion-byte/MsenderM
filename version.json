@@ -1,6 +1,6 @@
 {
-  "versionCode": 29,
-  "versionName": "1.0.29",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.29/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.29:\n1. Dynamic hotspot gateway detection via DhcpInfo\n2. Directly binds sender to active hotspot host"
+  "versionCode": 31,
+  "versionName": "1.0.31",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.31/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.31:\n1. Aligned clone hotspot architecture with Xender OAPService\n2. Standard port 6789 bindings\n3. Safe DhcpInfo live gateway resolution on sender"
 }

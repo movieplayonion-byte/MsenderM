@@ -386,7 +386,7 @@ class MainActivity : AppCompatActivity() {
 
                     private fun handleScannedQr(payload: String) {
         try {
-            var hostUrl = "http://192.168.43.1:8888"
+            var hostUrl = "http://192.168.49.1:6789"
 
             if (payload.startsWith("WIFI:")) {
                 var ssid = ""

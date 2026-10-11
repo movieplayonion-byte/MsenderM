@@ -8,6 +8,7 @@ import android.os.Looper
 
 object HotspotManager {
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
+    const val PORT = 6789
 
     fun startHotspot(
         context: Context,
@@ -15,7 +16,7 @@ object HotspotManager {
         onError: (String) -> Unit
     ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            onError("Android 8.0+ required for dynamic hotspot")
+            onError("Android 8.0+ required for LocalOnlyHotspot")
             return
         }
 
@@ -31,7 +32,7 @@ object HotspotManager {
                     val ssid = config?.SSID ?: "MsenderM_${(1000..9999).random()}"
                     val password = config?.preSharedKey ?: ""
 
-                    // Default standard gateway for Local-Only Hotspot
+                    // Xender clone hotspot standard gateway
                     Handler(Looper.getMainLooper()).post {
                         onSuccess(ssid, password, "192.168.49.1")
                     }
