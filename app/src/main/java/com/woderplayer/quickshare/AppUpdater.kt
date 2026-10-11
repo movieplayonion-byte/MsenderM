@@ -32,7 +32,7 @@ object AppUpdater {
                     activity.packageManager.getPackageInfo(activity.packageName, 0).versionCode
                 }
 
-                val configUrl = "https://raw.githubusercontent.com/movieplayonion-byte/MsenderM/main/version.json?nocache=${System.currentTimeMillis()}"
+                val configUrl = "https://gist.githubusercontent.com/movieplayonion-byte/e9befe8c1956fd0982427ba0b3fc102a/raw/2c844c56557e79fadecca5e15beafd1a66c807d9/version.json"
                 val req = Request.Builder()
                     .url(configUrl)
                     .build()
