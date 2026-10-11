@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#161B22"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/tvPreviewTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:singleLine="true"
+        android:layout_marginBottom="12dp" />
+
+    <ImageView
+        android:id="@+id/ivPreviewImage"
+        android:layout_width="match_parent"
+        android:layout_height="260dp"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <VideoView
+        android:id="@+id/vvPreviewVideo"
+        android:layout_width="match_parent"
+        android:layout_height="260dp"
+        android:visibility="gone" />
+
+    <ScrollView
+        android:id="@+id/scrollDocPreview"
+        android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/tvDocContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#ECEFF1"
+            android:textSize="13sp" />
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnClosePreview"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Close"
+        android:backgroundTint="#37474F"
+        android:textColor="#FFFFFF"
+        android:layout_marginTop="12dp" />
+</LinearLayout>

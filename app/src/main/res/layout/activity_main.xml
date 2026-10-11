@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0F141C">
 
-    <!-- Top Header -->
+    <!-- Top Bar -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -50,7 +49,7 @@
             android:layout_marginTop="2dp" />
     </LinearLayout>
 
-    <!-- Category Tabs (Apps, Images, Videos, Audio, Docs) -->
+    <!-- Categories -->
     <HorizontalScrollView
         android:id="@+id/tabScroll"
         android:layout_width="match_parent"
@@ -117,7 +116,7 @@
         </LinearLayout>
     </HorizontalScrollView>
 
-    <!-- Progress Card -->
+    <!-- Transfer Progress Container -->
     <LinearLayout
         android:id="@+id/progressContainer"
         android:layout_width="match_parent"
@@ -169,7 +168,31 @@
         </RelativeLayout>
     </LinearLayout>
 
-    <!-- QR Code Popup/Container -->
+    <!-- Grid View for Images, Videos, Apps, Docs -->
+    <GridView
+        android:id="@+id/gvContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/progressContainer"
+        android:layout_above="@id/bottomBar"
+        android:numColumns="3"
+        android:verticalSpacing="4dp"
+        android:horizontalSpacing="4dp"
+        android:padding="6dp"
+        android:visibility="visible" />
+
+    <!-- List View for Audio Only -->
+    <ListView
+        android:id="@+id/lvContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/progressContainer"
+        android:layout_above="@id/bottomBar"
+        android:divider="#1E2633"
+        android:dividerHeight="1dp"
+        android:visibility="gone" />
+
+    <!-- QR Container -->
     <LinearLayout
         android:id="@+id/qrContainer"
         android:layout_width="wrap_content"
@@ -209,17 +232,7 @@
             android:layout_marginTop="8dp" />
     </LinearLayout>
 
-    <!-- Main List of Items -->
-    <ListView
-        android:id="@+id/lvContent"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_below="@id/progressContainer"
-        android:layout_above="@id/bottomBar"
-        android:divider="#1E2633"
-        android:dividerHeight="1dp" />
-
-    <!-- Centered Floating Bottom Action Bar (Icons Only) -->
+    <!-- Floating Action Bar -->
     <LinearLayout
         android:id="@+id/bottomBar"
         android:layout_width="wrap_content"
@@ -236,7 +249,6 @@
         android:layout_marginBottom="16dp"
         android:elevation="8dp">
 
-        <!-- SEND (Arrow Up) -->
         <ImageButton
             android:id="@+id/btnSend"
             android:layout_width="54dp"
@@ -246,7 +258,6 @@
             android:contentDescription="Send"
             android:layout_marginEnd="20dp" />
 
-        <!-- RECEIVE (Arrow Down) -->
         <ImageButton
             android:id="@+id/btnReceive"
             android:layout_width="54dp"
