@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
@@ -68,7 +67,6 @@ object NotificationHelper {
             .setOngoing(false)
             .setAutoCancel(true)
 
-        // Receiver ke phone me tap karte hi file open ho
         if (!isSender && file != null && file.exists()) {
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
             val intent = Intent(Intent.ACTION_VIEW).apply {

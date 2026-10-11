@@ -5,10 +5,11 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import java.net.Inet4Address
+import java.net.NetworkInterface
 
 class ReceiveActivity : AppCompatActivity() {
 
@@ -35,9 +36,26 @@ class ReceiveActivity : AppCompatActivity() {
         }
     }
 
+    private fun getDeviceIp(): String {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (!address.isLoopbackAddress && address is Inet4Address) {
+                        return address.hostAddress ?: "127.0.0.1"
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return "127.0.0.1"
+    }
+
     private fun generateAndDisplayQR() {
         try {
-            val ip = NetworkUtils.getLocalIpAddress(this) ?: "127.0.0.1"
+            val ip = getDeviceIp()
             val port = 8080
             val qrContent = "msender://$ip:$port"
 

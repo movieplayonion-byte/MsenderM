@@ -1,6 +1,6 @@
 {
-  "versionCode": 9,
-  "versionName": "1.0.9",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.9/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.9:\n1. Fixed compilation error in ReceiveActivity\n2. Smart Notifications: Upload arrow for Sender, Download arrow for Receiver\n3. Tap notification to open received files directly\n4. Auto arrow stop on complete or fail"
+  "versionCode": 10,
+  "versionName": "1.0.10",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.10/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.10:\n1. Fixed NetworkUtils and view ID compilation in ReceiveActivity\n2. Upload arrow for Sender, Download arrow for Receiver\n3. Tap to open received files from notification\n4. Arrow auto-stop on transfer complete or fail"
 }
