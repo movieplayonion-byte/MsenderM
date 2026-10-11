@@ -25,6 +25,17 @@ object NetworkRequirements {
         return wm.isWifiEnabled
     }
 
+    fun isHotspotEnabled(context: Context): Boolean {
+        return try {
+            val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val method = wm.javaClass.getDeclaredMethod("isWifiApEnabled")
+            method.isAccessible = true
+            method.invoke(wm) as? Boolean ?: false
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     // SENDER: Wi-Fi + Location required (taaki clone hotspot ko scan karke auto-connect kare)
     fun ensureSender(activity: Activity, onPassed: () -> Unit) {
         if (!isLocationEnabled(activity)) {
@@ -66,6 +77,15 @@ object NetworkRequirements {
         }
 
         onPassed()
+    }
+
+    // MainActivity ke compatibility aliases (Purane references na tootein)
+    fun ensureSenderRequirements(activity: Activity, onPassed: () -> Unit) {
+        ensureSender(activity, onPassed)
+    }
+
+    fun ensureReceiverRequirements(activity: Activity, onPassed: () -> Unit) {
+        ensureReceiver(activity, onPassed)
     }
 
     private fun showDialog(
