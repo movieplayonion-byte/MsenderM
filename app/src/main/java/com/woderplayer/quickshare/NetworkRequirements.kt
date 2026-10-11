@@ -8,7 +8,6 @@ import android.location.LocationManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
-import android.widget.Toast
 
 object NetworkRequirements {
 
@@ -33,93 +32,84 @@ object NetworkRequirements {
             method.isAccessible = true
             method.invoke(wm) as? Boolean ?: false
         } catch (_: Exception) {
-            // Fallback: If reflection fails, assume user needs to ensure it via prompt
             false
         }
     }
 
-    // Sender Mandatory Check (Hotspot + Location)
-    fun ensureSenderRequirements(activity: Activity, onPassed: () -> Unit) {
-        val locationOk = isLocationEnabled(activity)
-        val hotspotOk = isHotspotEnabled(activity)
-
-        if (!locationOk) {
-            showMandatoryDialog(
+    fun ensureSender(activity: Activity, onPassed: () -> Unit) {
+        if (!isLocationEnabled(activity)) {
+            showDialog(
                 activity,
-                title = "Location Required",
-                message = "File share karne ke liye Location (GPS) on karna mandatory hai.",
-                actionText = "TURN ON LOCATION",
-                actionIntent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-            )
+                "Location Required",
+                "File send karne ke liye Location (GPS) on karna mandatory hai.",
+                "TURN ON LOCATION",
+                Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+            ) { ensureSender(activity, onPassed) }
             return
         }
 
-        if (!hotspotOk) {
-            val hotspotIntent = Intent().apply {
-                action = "android.settings.TETHER_SETTINGS"
-            }
-            showMandatoryDialog(
+        if (!isHotspotEnabled(activity)) {
+            showDialog(
                 activity,
-                title = "Hotspot Required",
-                message = "Offline receiver se connect hone ke liye Personal Hotspot on karna mandatory hai.",
-                actionText = "TURN ON HOTSPOT",
-                actionIntent = hotspotIntent
-            )
+                "Hotspot Required",
+                "Receiver ko connect karne ke liye Personal Hotspot on karna zaroori hai.",
+                "OPEN HOTSPOT SETTINGS",
+                Intent("android.settings.TETHER_SETTINGS")
+            ) { ensureSender(activity, onPassed) }
             return
         }
 
         onPassed()
     }
 
-    // Receiver Mandatory Check (Wi-Fi + Location)
-    fun ensureReceiverRequirements(activity: Activity, onPassed: () -> Unit) {
-        val locationOk = isLocationEnabled(activity)
-        val wifiOk = isWifiEnabled(activity)
-
-        if (!locationOk) {
-            showMandatoryDialog(
+    fun ensureReceiver(activity: Activity, onPassed: () -> Unit) {
+        if (!isLocationEnabled(activity)) {
+            showDialog(
                 activity,
-                title = "Location Required",
-                message = "Receiver device scan aur QR connect ke liye Location on karna mandatory hai.",
-                actionText = "TURN ON LOCATION",
-                actionIntent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-            )
+                "Location Required",
+                "Device search aur QR connect ke liye Location on karna mandatory hai.",
+                "TURN ON LOCATION",
+                Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+            ) { ensureReceiver(activity, onPassed) }
             return
         }
 
-        if (!wifiOk) {
-            showMandatoryDialog(
+        if (!isWifiEnabled(activity)) {
+            showDialog(
                 activity,
-                title = "Wi-Fi Required",
-                message = "Files receive karne ke liye Wi-Fi on karna mandatory hai.",
-                actionText = "TURN ON WI-FI",
-                actionIntent = Intent(Settings.ACTION_WIFI_SETTINGS)
-            )
+                "Wi-Fi Required",
+                "Sender ke hotspot se offline connect hone ke liye Wi-Fi on karein.",
+                "TURN ON WI-FI",
+                Intent(Settings.ACTION_WIFI_SETTINGS)
+            ) { ensureReceiver(activity, onPassed) }
             return
         }
 
         onPassed()
     }
 
-    private fun showMandatoryDialog(
+    private fun showDialog(
         activity: Activity,
         title: String,
-        message: String,
-        actionText: String,
-        actionIntent: Intent
+        msg: String,
+        btnText: String,
+        intent: Intent,
+        onRetry: () -> Unit
     ) {
         AlertDialog.Builder(activity)
             .setTitle(title)
-            .setMessage(message)
+            .setMessage(msg)
             .setCancelable(false)
-            .setPositiveButton(actionText) { _, _ ->
+            .setPositiveButton(btnText) { _, _ ->
                 try {
-                    activity.startActivity(actionIntent)
-                } catch (e: Exception) {
+                    activity.startActivity(intent)
+                } catch (_: Exception) {
                     activity.startActivity(Intent(Settings.ACTION_SETTINGS))
                 }
             }
-            .setNegativeButton("CANCEL", null)
+            .setNegativeButton("CHECK AGAIN") { _, _ ->
+                onRetry()
+            }
             .show()
     }
 }

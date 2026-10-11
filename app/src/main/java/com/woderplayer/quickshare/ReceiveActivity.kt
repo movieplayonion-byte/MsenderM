@@ -25,14 +25,12 @@ class ReceiveActivity : AppCompatActivity() {
         val btnBack = findViewById<Button>(R.id.btnBackReceive)
 
         btnBack.setOnClickListener { finish() }
-
-        generateAndDisplayQR()
     }
 
     override fun onResume() {
         super.onResume()
-        NetworkRequirements.ensureReceiverRequirements(this) {
-            // Requirements satisfied
+        NetworkRequirements.ensureReceiver(this) {
+            generateAndDisplayQR()
         }
     }
 
@@ -45,19 +43,23 @@ class ReceiveActivity : AppCompatActivity() {
                 while (addresses.hasMoreElements()) {
                     val address = addresses.nextElement()
                     if (!address.isLoopbackAddress && address is Inet4Address) {
-                        return address.hostAddress ?: "127.0.0.1"
+                        val host = address.hostAddress ?: ""
+                        if (host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("172.")) {
+                            return host
+                        }
                     }
                 }
             }
         } catch (_: Exception) {}
-        return "127.0.0.1"
+        return "192.168.43.1"
     }
 
     private fun generateAndDisplayQR() {
         try {
             val ip = getDeviceIp()
             val port = 8080
-            val qrContent = "msender://$ip:$port"
+            // OkHttp requires valid http:// scheme
+            val qrContent = "http://$ip:$port"
 
             val writer = QRCodeWriter()
             val bitMatrix = writer.encode(qrContent, BarcodeFormat.QR_CODE, 512, 512)
@@ -72,7 +74,7 @@ class ReceiveActivity : AppCompatActivity() {
             }
 
             ivQrCode.setImageBitmap(bitmap)
-            tvStatus.text = "Scan QR to send files to this device"
+            tvStatus.text = "Receiver Ready (IP: $ip)\nScan QR to send files offline"
         } catch (e: Exception) {
             tvStatus.text = "Failed to generate QR: ${e.message}"
         }
