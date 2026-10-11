@@ -1,6 +1,6 @@
 {
-  "versionCode": 27,
-  "versionName": "1.0.27",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.27/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.27:\n1. Dynamic IP extraction from active hotspot interfaces\n2. Replaced hardcoded 192.168.43.1 with real LOHS gateway\n3. Added 1s interface warmup delay for exact IP binding"
+  "versionCode": 28,
+  "versionName": "1.0.28",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.28/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.28:\n1. Strictly excluded cellular and carrier NAT IPs from hotspot QR\n2. Enforced 192.168.x.x local hotspot subnet lock\n3. Set standard 192.168.49.1 LOHS fallback"
 }
