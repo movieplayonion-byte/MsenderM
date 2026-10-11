@@ -1,6 +1,6 @@
 {
-  "versionCode": 14,
-  "versionName": "1.0.14",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.14/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.14:\n1. Fixed ensureReceiverRequirements build issue\n2. Receiver clone hotspot (LocalOnlyHotspot) + Sender auto-scan WiFi\n3. Complete offline high speed transfer"
+  "versionCode": 15,
+  "versionName": "1.0.15",
+  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.15/MsenderM-update.apk",
+  "releaseNotes": "🚀 MsenderM v1.0.15:\n1. Added NEARBY_WIFI_DEVICES permission for Android 13+\n2. Fixed Receive screen crash on hotspot creation\n3. Mandatory step-by-step dialogs: Nearby -> Location -> Wi-Fi"
 }
