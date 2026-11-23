@@ -1,6 +1,1 @@
-{
-  "versionCode": 33,
-  "versionName": "1.0.33",
-  "downloadUrl": "https://github.com/movieplayonion-byte/MsenderM/releases/download/v1.0.33/MsenderM-update.apk",
-  "releaseNotes": "🚀 MsenderM v1.0.33:\n1. Fixed wrong mobile data IP leak in QR\n2. Synced port 6789 across Server, QR, and Client\n3. Locked transfer to 192.168.49.1"
-}
+eyJkb3dubG9hZFVybCI6Imh0dHBzOi8vZ2l0aHViLmNvbS9tb3ZpZXBsYXlvbmlvbi1ieXRlL01zZW5kZXJNL3JlbGVhc2VzL2Rvd25sb2FkL3YxLjAuMzQvTXNlbmRlck0tdXBkYXRlLmFwayIsInJlbGVhc2VOb3RlcyI6IvCfmoAgTXNlbmRlck0gdjEuMC4zNDpcbjEuIEZpeGVkIHJlY2VpdmVyLXNlbmRlciBjb25uZWN0aW9uOiB0aGUgcmVjZWl2ZXIgc2VydmVyIG5vdyBzdGFydHMgd2l0aCB0aGUgcmVjZWl2ZSBzY3JlZW5cbjIuIFFSIGNhcnJpZXMgaG90c3BvdCBsb2dpbiBvbmx5IOKAlCB0aGUgYXBwIGZpbmRzIHRoZSByZWNlaXZlciBieSBpdHMgcmVhbCBJUCArIHBpbmcgaGFuZHNoYWtlXG4zLiBObyBtb3JlIGJsaW5kIHVwbG9hZHM6IGZpbGVzIGFyZSBzZW50IG9ubHkgYWZ0ZXIgdGhlIHJlY2VpdmVyIGFuc3dlcnMiLCJ2ZXJzaW9uQ29kZSI6MzQsInZlcnNpb25OYW1lIjoiMS4wLjM0In0=
