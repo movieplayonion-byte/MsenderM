@@ -67,6 +67,25 @@ object WifiAutoConnector {
         return getGatewayIp(context)
     }
 
+    /** This phone's own IPv4 address on the given (hotspot) network, or null. */
+    fun getOwnIp(context: Context, network: Network? = boundNetwork): String? {
+        val net = network ?: return null
+        return try {
+            val cm = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val lp = cm.getLinkProperties(net) ?: return null
+            for (la in lp.linkAddresses) {
+                val addr = la.address ?: continue
+                if (addr.isLoopbackAddress) continue
+                val host = addr.hostAddress ?: continue
+                if (host.indexOf(':') >= 0) continue // IPv4 only
+                return host
+            }
+            null
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     /**
      * Every plausible receiver IP on this network, best first: the link-properties
      * pick (DHCP server / first default gateway), every other default-route gateway,
@@ -167,6 +186,24 @@ object WifiAutoConnector {
             }
 
             val result = foundIp
+            if (result != null) {
+                // Best-effort session hello: tell the receiver who we are, so
+                // it can send files back to us later in this same session.
+                try {
+                    val ownIp = getOwnIp(context, net)
+                    if (ownIp != null) {
+                        val helloRequest = Request.Builder()
+                            .url("http://$result:$port/hello")
+                            .header("x-peer-ip", ownIp)
+                            .get()
+                            .build()
+                        client.newCall(helloRequest).execute().use { resp ->
+                            resp.body?.string()
+                        }
+                    }
+                } catch (_: Throwable) {}
+                SessionManager.startSession(result, isHotspotOwner = false)
+            }
             mainHandler.post {
                 if (result != null) onReady(result) else onFailed()
             }
@@ -234,6 +271,7 @@ object WifiAutoConnector {
     }
 
     fun disconnect(context: Context) {
+        SessionManager.clear()
         try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             networkCallback?.let { cm.unregisterNetworkCallback(it) }
