@@ -10,6 +10,10 @@ import com.woderplayer.quickshare.engine.NetworkUtils
 object HotspotManager {
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     const val PORT = 6789
+
+    /** True while a LocalOnlyHotspot reservation is held (hotspot is up). */
+    val isRunning: Boolean
+        get() = reservation != null
     private const val IP_RESOLVE_ATTEMPTS = 10
     private const val IP_RESOLVE_INTERVAL_MS = 300L
 
