@@ -14,6 +14,7 @@ import android.os.Environment
 import android.os.IBinder
 import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
+import com.woderplayer.quickshare.SessionManager
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
 import java.io.FileOutputStream
@@ -94,6 +95,23 @@ class TransferReceiverService : Service() {
         notifManager.notify(NOTIF_ID, notif)
     }
 
+    /**
+     * Final state after a file has been fully received: static (non-animated)
+     * icon, no progress bar — the notification reads "Completed" instead of
+     * staying in a progress state forever.
+     */
+    fun showCompletedNotification(fileName: String) {
+        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Completed")
+            .setContentText("Received: $fileName")
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+        val notifManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notifManager.notify(NOTIF_ID, notif)
+    }
+
     private fun createNotification(title: String, text: String, max: Int, progress: Int): Notification {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
@@ -143,7 +161,16 @@ class ReceiverHttpServer(
         val uri = session.uri ?: ""
         if (uri == "/ping") return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "PONG")
 
+        if (uri == "/hello" && session.method == Method.GET) {
+            // The joining phone introduces itself: remember it as our session
+            // peer so this phone can send files back without a new QR scan.
+            notePeer(session.headers["x-peer-ip"])
+            return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "HELLO")
+        }
+
         if (session.method == Method.POST) {
+            // Same session bookkeeping on uploads, in case the hello was missed.
+            notePeer(session.headers["x-peer-ip"])
             return try {
                 val rawName = session.headers["x-filename"] ?: "file_${System.currentTimeMillis()}"
                 val fileName = URLDecoder.decode(rawName, "UTF-8")
@@ -153,7 +180,7 @@ class ReceiverHttpServer(
                 val isSaved = saveIncomingStream(fileName, inputStream, totalLen)
                 if (isSaved) {
                     TransferReceiverService.onFileReceivedListener?.invoke(fileName, totalLen)
-                    service.updateNotification("MsenderM Receiver", "Received: $fileName", 0, 0)
+                    service.showCompletedNotification(fileName)
                     newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "SAVED")
                 } else {
                     newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Save Failed")
@@ -163,6 +190,14 @@ class ReceiverHttpServer(
             }
         }
         return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "MsenderM Ready")
+    }
+
+    /** Records the sending phone as this session's peer (this phone owns the hotspot). */
+    private fun notePeer(peerIp: String?) {
+        if (!peerIp.isNullOrBlank()) {
+            SessionManager.startSession(peerIp, isHotspotOwner = true)
+            SessionManager.onPeerConnected?.invoke(peerIp)
+        }
     }
 
     private fun saveIncomingStream(fileName: String, inputStream: InputStream, length: Long): Boolean {
