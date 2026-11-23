@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
@@ -20,7 +21,12 @@ class ReceiveActivity : AppCompatActivity() {
 
     private lateinit var ivQrCode: ImageView
     private lateinit var tvStatus: TextView
+    private lateinit var btnSendFiles: Button
     private var receiverServiceStarted = false
+
+    // Set when leaving via SEND FILES: the hotspot, the receiver service and
+    // the session must all survive so the peer can be sent files in return.
+    private var keepSessionOnDestroy = false
 
     // Set once hotspot + server self-test have passed for this screen session,
     // so onResume doesn't tear everything down and restart it on every return.
@@ -34,6 +40,7 @@ class ReceiveActivity : AppCompatActivity() {
 
         ivQrCode = findViewById(R.id.ivQrCode)
         tvStatus = findViewById(R.id.tvReceiveStatus)
+        btnSendFiles = findViewById(R.id.btnSendFiles)
         val btnBack = findViewById<Button>(R.id.btnBackReceive)
 
         btnBack.setOnClickListener {
@@ -41,17 +48,45 @@ class ReceiveActivity : AppCompatActivity() {
             HotspotManager.stopHotspot()
             finish()
         }
+
+        btnSendFiles.setOnClickListener {
+            // Go pick files to send back to the connected peer. The hotspot
+            // and the receiver service keep running — the session survives.
+            keepSessionOnDestroy = true
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra("EXTRA_SEND_TO_PEER", true)
+            }
+            startActivity(intent)
+        }
     }
 
     override fun onResume() {
         super.onResume()
+        // The server invokes this (on its own thread) when a peer says hello —
+        // marshal to the UI thread before touching views.
+        SessionManager.onPeerConnected = { peerIp ->
+            runOnUiThread {
+                val ip = lastIp
+                tvStatus.text = if (ip != null) {
+                    "Server: ON — $ip:${TransferReceiverService.PORT}\nConnected: $peerIp"
+                } else {
+                    "Connected: $peerIp"
+                }
+                btnSendFiles.visibility = View.VISIBLE
+            }
+        }
         NetworkRequirements.ensureReceiver(this) {
             if (receiverSessionActive && TransferReceiverService.isServerRunning && HotspotManager.isRunning) {
                 // This screen session is already fully set up — just refresh
                 // the status instead of restarting hotspot and server.
                 val ssid = lastSsid
                 val ip = lastIp
-                if (ssid != null && ip != null) {
+                val peerIp = SessionManager.peerIp
+                if (SessionManager.active && !peerIp.isNullOrEmpty() && ip != null) {
+                    tvStatus.text = "Server: ON — $ip:${TransferReceiverService.PORT}\nConnected: $peerIp"
+                    btnSendFiles.visibility = View.VISIBLE
+                } else if (ssid != null && ip != null) {
                     tvStatus.text = "Hotspot: $ssid\nServer: ON — $ip:${TransferReceiverService.PORT}\nScan QR with sender to auto-connect"
                 }
             } else {
@@ -63,9 +98,18 @@ class ReceiveActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        SessionManager.onPeerConnected = null
+        super.onPause()
+    }
+
     override fun onDestroy() {
-        stopReceiverService()
-        HotspotManager.stopHotspot()
+        // Leaving via SEND FILES destroys this screen (CLEAR_TOP) but must not
+        // tear anything down — the session has to survive for the return trip.
+        if (!keepSessionOnDestroy) {
+            stopReceiverService()
+            HotspotManager.stopHotspot()
+        }
         super.onDestroy()
     }
 
@@ -87,6 +131,7 @@ class ReceiveActivity : AppCompatActivity() {
 
     private fun stopReceiverService() {
         receiverSessionActive = false
+        SessionManager.clear()
         if (!receiverServiceStarted) return
         receiverServiceStarted = false
         val serviceIntent = Intent(this, TransferReceiverService::class.java).apply {
