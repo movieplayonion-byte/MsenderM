@@ -417,7 +417,12 @@ class MainActivity : AppCompatActivity() {
                             },
                             onFailed = {
                                 runOnUiThread {
-                                    tvStatus.text = "Receiver not found on this hotspot"
+                                    val tried = WifiAutoConnector.lastTriedCandidates
+                                    tvStatus.text = if (tried.isNotEmpty()) {
+                                        "Receiver not found (tried: ${tried.joinToString(", ")})"
+                                    } else {
+                                        "Receiver not found on this hotspot"
+                                    }
                                     Toast.makeText(
                                         this,
                                         "Receiver not found. Keep the receiver screen open and scan again.",
@@ -466,6 +471,8 @@ class MainActivity : AppCompatActivity() {
         }
         val activeClient = httpClient.newBuilder()
             .socketFactory(net.socketFactory)
+            // Local hotspot traffic must never be routed through a system proxy.
+            .proxy(java.net.Proxy.NO_PROXY)
             .build()
 
         runOnUiThread { progressContainer.visibility = View.VISIBLE }
