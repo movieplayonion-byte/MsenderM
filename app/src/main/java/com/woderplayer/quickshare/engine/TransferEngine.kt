@@ -207,7 +207,11 @@ class ReceiverHttpServer(
 }
 
 object NetworkUtils {
-    fun getLocalIp(): String {
+    // LocalOnlyHotspot (clone hotspot) gateway used by MsenderM transfers.
+    const val FALLBACK_IP = "192.168.49.1"
+
+    /** Returns the real IPv4 address of the local hotspot/Wi-Fi interface, or null if not up yet. */
+    fun findLocalIp(): String? {
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
             for (intf in interfaces) {
@@ -224,6 +228,8 @@ object NetworkUtils {
                 }
             }
         } catch (_: Exception) {}
-        return "192.168.43.1"
+        return null
     }
+
+    fun getLocalIp(): String = findLocalIp() ?: FALLBACK_IP
 }
