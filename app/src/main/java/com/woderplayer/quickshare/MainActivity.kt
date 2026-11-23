@@ -133,6 +133,13 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Select items to send!", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            // Active session (Xender-style): send straight to the connected
+            // peer — no QR scan or reconnect needed.
+            val sessionPeerIp = SessionManager.peerIp
+            if (SessionManager.active && !sessionPeerIp.isNullOrEmpty()) {
+                startUploadStream("http://$sessionPeerIp:${TransferReceiverService.PORT}/upload")
+                return@setOnClickListener
+            }
             NetworkRequirements.ensureSender(this) {
                 val options = ScanOptions().apply {
                     setPrompt("Scan receiver QR code")
@@ -151,6 +158,41 @@ class MainActivity : AppCompatActivity() {
         if (intent?.getBooleanExtra("EXTRA_START_RECEIVE", false) == true) {
             NetworkRequirements.ensureReceiverRequirements(this) { startActivity(Intent(this, ReceiveActivity::class.java)) }
         }
+
+        handleSendToPeerIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSendToPeerIntent(intent)
+    }
+
+    /** Came back from the receive screen to send files to the connected peer. */
+    private fun handleSendToPeerIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("EXTRA_SEND_TO_PEER", false) == true && SessionManager.active) {
+            val peerIp = SessionManager.peerIp
+            if (!peerIp.isNullOrEmpty()) {
+                tvStatus.text = "Connected to $peerIp — select files and tap Send"
+            }
+        }
+    }
+
+    /**
+     * This phone joined as the sender — start our own receiver server too, so
+     * the peer can send files back within the same session.
+     */
+    private fun startOwnReceiverService() {
+        val serviceIntent = Intent(this, TransferReceiverService::class.java).apply {
+            action = TransferReceiverService.ACTION_START
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun setupSelectionAndActions() {
@@ -413,6 +455,9 @@ class MainActivity : AppCompatActivity() {
                         WifiAutoConnector.verifyReceiver(
                             applicationContext,
                             onReady = { serverIp ->
+                                // Joiner side of the session: run our own
+                                // receiver server so the peer can send back.
+                                startOwnReceiverService()
                                 startUploadStream("http://$serverIp:${TransferReceiverService.PORT}/upload")
                             },
                             onFailed = {
@@ -463,17 +508,25 @@ class MainActivity : AppCompatActivity() {
 
         // Uploads must go over the bound receiver-hotspot network only. Without
         // it, the default client would silently leak the transfer to mobile data.
+        // One exception: in an active session where THIS phone owns the hotspot
+        // there is no bound network — the peer is on our own hotspot, reachable
+        // directly, so a plain no-proxy client is correct there.
         val net = WifiAutoConnector.boundNetwork
-        if (net == null) {
-            tvStatus.text = "Not connected to receiver hotspot"
-            Toast.makeText(this, "Not connected to receiver. Scan the QR code again.", Toast.LENGTH_LONG).show()
-            return
+        val activeClient = when {
+            net != null -> httpClient.newBuilder()
+                .socketFactory(net.socketFactory)
+                // Local hotspot traffic must never be routed through a system proxy.
+                .proxy(java.net.Proxy.NO_PROXY)
+                .build()
+            SessionManager.active && SessionManager.isHotspotOwner -> httpClient.newBuilder()
+                .proxy(java.net.Proxy.NO_PROXY)
+                .build()
+            else -> {
+                tvStatus.text = "Not connected to receiver hotspot"
+                Toast.makeText(this, "Not connected to receiver. Scan the QR code again.", Toast.LENGTH_LONG).show()
+                return
+            }
         }
-        val activeClient = httpClient.newBuilder()
-            .socketFactory(net.socketFactory)
-            // Local hotspot traffic must never be routed through a system proxy.
-            .proxy(java.net.Proxy.NO_PROXY)
-            .build()
 
         runOnUiThread { progressContainer.visibility = View.VISIBLE }
 
@@ -524,9 +577,14 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    val req = Request.Builder()
+                    val reqBuilder = Request.Builder()
                         .url(uploadUrl)
                         .addHeader("x-filename", URLEncoder.encode(item.name, "UTF-8"))
+                    // Tell the peer who we are so its session points back at us.
+                    WifiAutoConnector.getOwnIp(applicationContext, net)?.let { ownIp ->
+                        reqBuilder.addHeader("x-peer-ip", ownIp)
+                    }
+                    val req = reqBuilder
                         .post(body)
                         .build()
 
