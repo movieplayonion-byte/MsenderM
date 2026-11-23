@@ -11,12 +11,22 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.woderplayer.quickshare.engine.TransferReceiverService
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.URL
 
 class ReceiveActivity : AppCompatActivity() {
 
     private lateinit var ivQrCode: ImageView
     private lateinit var tvStatus: TextView
     private var receiverServiceStarted = false
+
+    // Set once hotspot + server self-test have passed for this screen session,
+    // so onResume doesn't tear everything down and restart it on every return.
+    private var receiverSessionActive = false
+    private var lastSsid: String? = null
+    private var lastIp: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,10 +46,20 @@ class ReceiveActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         NetworkRequirements.ensureReceiver(this) {
-            // The HTTP receiver server must be listening BEFORE the sender can
-            // connect and upload — start it first, then bring up the hotspot.
-            startReceiverService()
-            setupReceiverHotspot()
+            if (receiverSessionActive && TransferReceiverService.isServerRunning && HotspotManager.isRunning) {
+                // This screen session is already fully set up — just refresh
+                // the status instead of restarting hotspot and server.
+                val ssid = lastSsid
+                val ip = lastIp
+                if (ssid != null && ip != null) {
+                    tvStatus.text = "Hotspot: $ssid\nServer: ON — $ip:${TransferReceiverService.PORT}\nScan QR with sender to auto-connect"
+                }
+            } else {
+                // The HTTP receiver server must be listening BEFORE the sender can
+                // connect and upload — start it first, then bring up the hotspot.
+                startReceiverService()
+                setupReceiverHotspot()
+            }
         }
     }
 
@@ -66,6 +86,7 @@ class ReceiveActivity : AppCompatActivity() {
     }
 
     private fun stopReceiverService() {
+        receiverSessionActive = false
         if (!receiverServiceStarted) return
         receiverServiceStarted = false
         val serviceIntent = Intent(this, TransferReceiverService::class.java).apply {
@@ -81,12 +102,77 @@ class ReceiveActivity : AppCompatActivity() {
         HotspotManager.startHotspot(
             this,
             onSuccess = { ssid, pass, ip ->
-                generateQR(ssid, pass, ip)
+                // Don't present the QR as ready until the receiver server has
+                // proven it is actually listening — otherwise the sender joins
+                // the hotspot and finds nobody home.
+                tvStatus.text = "Hotspot: $ssid\nStarting server..."
+                runServerSelfTest(ssid, pass, ip)
             },
             onError = { err ->
                 tvStatus.text = "Hotspot Error: $err"
             }
         )
+    }
+
+    /**
+     * Self-test on a background thread: the receiver server must accept a local
+     * connection and answer /ping with PONG before we call this session ready.
+     * Retries for up to ~6 seconds because the service start is asynchronous.
+     */
+    private fun runServerSelfTest(ssid: String, pass: String, ip: String) {
+        Thread {
+            val serverOk = selfTestServer()
+            runOnUiThread {
+                if (serverOk) {
+                    receiverSessionActive = true
+                    lastSsid = ssid
+                    lastIp = ip
+                    generateQR(ssid, pass, ip)
+                } else {
+                    receiverSessionActive = false
+                    val err = TransferReceiverService.lastServerError ?: "unknown"
+                    tvStatus.text = "Server failed to start: $err"
+                }
+            }
+        }.start()
+    }
+
+    private fun selfTestServer(): Boolean {
+        val deadline = System.currentTimeMillis() + 6_000L
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress("127.0.0.1", TransferReceiverService.PORT), 800)
+                }
+                // Port is listening — confirm it is really our server via /ping.
+                if (pingLocalServer()) return true
+            } catch (_: Exception) {}
+            try {
+                Thread.sleep(400)
+            } catch (_: InterruptedException) {
+                return false
+            }
+        }
+        return false
+    }
+
+    private fun pingLocalServer(): Boolean {
+        return try {
+            val conn = URL("http://127.0.0.1:${TransferReceiverService.PORT}/ping").openConnection() as HttpURLConnection
+            conn.connectTimeout = 800
+            conn.readTimeout = 800
+            conn.requestMethod = "GET"
+            val code = conn.responseCode
+            val body = try {
+                conn.inputStream?.bufferedReader()?.readText()?.trim()
+            } catch (_: Exception) {
+                null
+            }
+            conn.disconnect()
+            code == 200 && body == "PONG"
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun generateQR(ssid: String, pass: String, ip: String) {
@@ -108,7 +194,7 @@ class ReceiveActivity : AppCompatActivity() {
             }
 
             ivQrCode.setImageBitmap(bitmap)
-            tvStatus.text = "Hotspot: $ssid\nServer: $ip:${TransferReceiverService.PORT}\nScan QR with sender to auto-connect"
+            tvStatus.text = "Hotspot: $ssid\nServer: ON — $ip:${TransferReceiverService.PORT}\nScan QR with sender to auto-connect"
         } catch (e: Exception) {
             tvStatus.text = "QR Error: ${e.message}"
         }
