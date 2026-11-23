@@ -33,6 +33,12 @@ class TransferReceiverService : Service() {
         const val ACTION_START = "ACTION_START_RECEIVER"
         const val ACTION_STOP = "ACTION_STOP_RECEIVER"
         var onFileReceivedListener: ((String, Long) -> Unit)? = null
+
+        /** True only while a ReceiverHttpServer instance started successfully and is listening. */
+        @Volatile var isServerRunning: Boolean = false
+
+        /** Message of the last server start failure, for diagnostics on the receive screen. */
+        @Volatile var lastServerError: String? = null
     }
 
     override fun onCreate() {
@@ -54,16 +60,28 @@ class TransferReceiverService : Service() {
             }
 
             try {
-                if (server == null) {
-                    server = ReceiverHttpServer(PORT, applicationContext, this)
-                    server?.start()
-                }
+                // Always start from a clean slate: a stale instance can be dead
+                // or silently holding the port, which is exactly how the sender
+                // ends up talking to nobody. Stop whatever exists, then bind fresh.
+                try {
+                    server?.stop()
+                } catch (_: Exception) {}
+                server = null
+
+                val freshServer = ReceiverHttpServer(PORT, applicationContext, this)
+                freshServer.start()
+                server = freshServer
+                isServerRunning = true
+                lastServerError = null
             } catch (e: Exception) {
+                isServerRunning = false
+                lastServerError = e.message ?: e.javaClass.simpleName
                 e.printStackTrace()
             }
         } else if (intent?.action == ACTION_STOP) {
             server?.stop()
             server = null
+            isServerRunning = false
             stopForeground(true)
             stopSelf()
         }
@@ -92,6 +110,8 @@ class TransferReceiverService : Service() {
 
     override fun onDestroy() {
         server?.stop()
+        server = null
+        isServerRunning = false
         super.onDestroy()
     }
 
