@@ -14,12 +14,16 @@ import android.text.format.Formatter
 import com.woderplayer.quickshare.engine.TransferReceiverService
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 object WifiAutoConnector {
     var boundNetwork: Network? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private const val HANDSHAKE_TIMEOUT_MS = 12_000L
+    private const val HANDSHAKE_TIMEOUT_MS = 20_000L
+
+    /** Candidate server IPs tried in the most recent verifyReceiver run (diagnostics). */
+    @Volatile var lastTriedCandidates: List<String> = emptyList()
 
     fun getGatewayIp(context: Context): String? {
         return try {
@@ -64,8 +68,44 @@ object WifiAutoConnector {
     }
 
     /**
+     * Every plausible receiver IP on this network, best first: the link-properties
+     * pick (DHCP server / first default gateway), every other default-route gateway,
+     * the ".1" of the subnet our own address sits in (the hotspot owner is almost
+     * always that), the legacy DHCP gateway, and the standard hotspot gateway.
+     */
+    private fun collectCandidates(context: Context, network: Network): LinkedHashSet<String> {
+        val candidates = linkedSetOf<String>()
+        getServerIp(context, network)?.let { candidates.add(it) }
+        try {
+            val cm = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val lp = cm.getLinkProperties(network)
+            if (lp != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    for (route in lp.routes) {
+                        if (route.isDefaultRoute) {
+                            val gateway = route.gateway?.hostAddress
+                            if (!gateway.isNullOrEmpty() && gateway != "0.0.0.0") candidates.add(gateway)
+                        }
+                    }
+                }
+                for (la in lp.linkAddresses) {
+                    val host = la.address?.hostAddress ?: continue
+                    if (host.indexOf(':') >= 0) continue // IPv4 only
+                    val lastDot = host.lastIndexOf('.')
+                    if (lastDot > 0) {
+                        candidates.add(host.substring(0, lastDot) + ".1")
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+        getGatewayIp(context)?.let { candidates.add(it) }
+        candidates.add("192.168.49.1")
+        return candidates
+    }
+
+    /**
      * Handshake with the receiver: tries GET /ping on each candidate IP over the
-     * bound hotspot network until one answers "PONG" (up to ~12 seconds total).
+     * bound hotspot network until one answers "PONG" (up to ~20 seconds total).
      * Callbacks are delivered on the main thread.
      */
     fun verifyReceiver(
@@ -76,6 +116,7 @@ object WifiAutoConnector {
         val mainHandler = Handler(Looper.getMainLooper())
         val net = boundNetwork
         if (net == null) {
+            lastTriedCandidates = emptyList()
             mainHandler.post { onFailed() }
             return
         }
@@ -83,6 +124,8 @@ object WifiAutoConnector {
         Thread {
             val client = OkHttpClient.Builder()
                 .socketFactory(net.socketFactory)
+                // Local hotspot traffic must never be routed through a system proxy.
+                .proxy(Proxy.NO_PROXY)
                 .connectTimeout(2, TimeUnit.SECONDS)
                 .readTimeout(2, TimeUnit.SECONDS)
                 .build()
@@ -90,14 +133,14 @@ object WifiAutoConnector {
             val port = TransferReceiverService.PORT
             val deadline = System.currentTimeMillis() + HANDSHAKE_TIMEOUT_MS
             var foundIp: String? = null
+            val triedAll = linkedSetOf<String>()
 
             while (foundIp == null && System.currentTimeMillis() < deadline) {
                 // Rebuild candidates each round: link properties settle a
                 // moment after the network first becomes available.
-                val candidates = linkedSetOf<String>()
-                getServerIp(context, net)?.let { candidates.add(it) }
-                getGatewayIp(context)?.let { candidates.add(it) }
-                candidates.add("192.168.49.1")
+                val candidates = collectCandidates(context, net)
+                triedAll.addAll(candidates)
+                lastTriedCandidates = triedAll.toList()
 
                 for (ip in candidates) {
                     try {
