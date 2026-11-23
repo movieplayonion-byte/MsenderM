@@ -384,51 +384,69 @@ class MainActivity : AppCompatActivity() {
         tvSelectedCount.text = "${selectedItemsMap.size} selected (~$totalMb MB)"
     }
 
-                    private fun handleScannedQr(payload: String) {
+    private fun handleScannedQr(payload: String) {
         try {
-            var hostUrl = "http://192.168.49.1:6789"
-
             if (payload.startsWith("WIFI:")) {
+                // Receiver QR: hotspot login only (S:/P:). The server IP is
+                // discovered after joining, via link properties + /ping.
                 var ssid = ""
                 var pass = ""
                 val clean = payload.removePrefix("WIFI:").removeSuffix(";;").removeSuffix(";")
-                val tokens = clean.split(";")
-                for (t in tokens) {
+                for (t in clean.split(";")) {
                     if (t.startsWith("S:")) ssid = t.removePrefix("S:")
                     if (t.startsWith("P:")) pass = t.removePrefix("P:")
-                    if (t.startsWith("H:")) {
-                        val h = t.removePrefix("H:")
-                        hostUrl = if (h.startsWith("http://") || h.startsWith("https://")) h else "http://$h"
-                    }
                 }
 
-                if (ssid.isNotEmpty()) {
-                    Toast.makeText(this, "Connecting to $ssid...", Toast.LENGTH_SHORT).show()
-                    WifiAutoConnector.connectToHotspot(
-                        applicationContext,
-                        ssid,
-                        pass,
-                        {
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                val gw = WifiAutoConnector.getGatewayIp(this@MainActivity); val finalUrl = if (gw != null) "http://$gw:6789/upload" else "$hostUrl/upload"; startUploadStream(finalUrl)
-                            }, 2500)
-                        },
-                        {
-                            runOnUiThread {
-                                Toast.makeText(this, "Direct connection...", Toast.LENGTH_SHORT).show()
-                                val gw = WifiAutoConnector.getGatewayIp(this@MainActivity); val finalUrl = if (gw != null) "http://$gw:6789/upload" else "$hostUrl/upload"; startUploadStream(finalUrl)
-                            }
-                        }
-                    )
+                if (ssid.isEmpty()) {
+                    Toast.makeText(this, "Invalid QR code", Toast.LENGTH_SHORT).show()
                     return
                 }
-            } else if (payload.startsWith("http://") || payload.startsWith("https://")) {
-                hostUrl = payload
-            } else {
-                hostUrl = "http://$payload"
+
+                Toast.makeText(this, "Connecting to $ssid...", Toast.LENGTH_SHORT).show()
+                tvStatus.text = "Connecting to $ssid..."
+                WifiAutoConnector.connectToHotspot(
+                    applicationContext,
+                    ssid,
+                    pass,
+                    onConnected = {
+                        runOnUiThread { tvStatus.text = "Wi-Fi connected. Contacting receiver..." }
+                        WifiAutoConnector.verifyReceiver(
+                            applicationContext,
+                            onReady = { serverIp ->
+                                startUploadStream("http://$serverIp:${TransferReceiverService.PORT}/upload")
+                            },
+                            onFailed = {
+                                runOnUiThread {
+                                    tvStatus.text = "Receiver not found on this hotspot"
+                                    Toast.makeText(
+                                        this,
+                                        "Receiver not found. Keep the receiver screen open and scan again.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        )
+                    },
+                    onError = {
+                        runOnUiThread {
+                            tvStatus.text = "Could not connect to receiver hotspot"
+                            Toast.makeText(
+                                this,
+                                "Connection failed. Check the receiver and scan again.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                )
+                return
             }
 
-            val gw = WifiAutoConnector.getGatewayIp(this@MainActivity); val finalUrl = if (gw != null) "http://$gw:6789/upload" else "$hostUrl/upload"; startUploadStream(finalUrl)
+            if (payload.startsWith("http://") || payload.startsWith("https://")) {
+                startUploadStream(payload.removeSuffix("/") + "/upload")
+                return
+            }
+
+            startUploadStream("http://$payload/upload")
         } catch (e: Throwable) {
             Toast.makeText(this, "Scan Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
@@ -437,6 +455,18 @@ class MainActivity : AppCompatActivity() {
     private fun startUploadStream(uploadUrl: String) {
         val transferList = selectedItemsMap.values.toList()
         if (transferList.isEmpty()) return
+
+        // Uploads must go over the bound receiver-hotspot network only. Without
+        // it, the default client would silently leak the transfer to mobile data.
+        val net = WifiAutoConnector.boundNetwork
+        if (net == null) {
+            tvStatus.text = "Not connected to receiver hotspot"
+            Toast.makeText(this, "Not connected to receiver. Scan the QR code again.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val activeClient = httpClient.newBuilder()
+            .socketFactory(net.socketFactory)
+            .build()
 
         runOnUiThread { progressContainer.visibility = View.VISIBLE }
 
@@ -493,11 +523,6 @@ class MainActivity : AppCompatActivity() {
                         .post(body)
                         .build()
 
-                    val activeClient = WifiAutoConnector.boundNetwork?.let { net ->
-                        httpClient.newBuilder()
-                            .socketFactory(net.socketFactory)
-                            .build()
-                    } ?: httpClient
                     val resp = activeClient.newCall(req).execute()
                     if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
                 }
