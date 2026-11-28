@@ -14,6 +14,21 @@ object HotspotManager {
     /** True while a LocalOnlyHotspot reservation is held (hotspot is up). */
     val isRunning: Boolean
         get() = reservation != null
+
+    /** Details of the currently running hotspot, so a re-entered receive
+     *  screen can adopt the live hotspot instead of restarting it. */
+    @Volatile var currentSsid: String? = null
+        private set
+    @Volatile var currentPassword: String? = null
+        private set
+    @Volatile var currentIp: String? = null
+        private set
+
+    private fun clearCurrentDetails() {
+        currentSsid = null
+        currentPassword = null
+        currentIp = null
+    }
     private const val IP_RESOLVE_ATTEMPTS = 10
     private const val IP_RESOLVE_INTERVAL_MS = 300L
 
@@ -24,6 +39,15 @@ object HotspotManager {
     ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             onError("Android 8.0+ required for LocalOnlyHotspot")
+            return
+        }
+
+        // A hotspot is already up with known details — reuse it. Restarting
+        // here would close the live hotspot and drop a connected peer.
+        val runningSsid = currentSsid
+        val runningIp = currentIp
+        if (reservation != null && runningSsid != null && runningIp != null) {
+            onSuccess(runningSsid, currentPassword ?: "", runningIp)
             return
         }
 
@@ -38,10 +62,13 @@ object HotspotManager {
                     val config = res.wifiConfiguration
                     val ssid = config?.SSID ?: "MsenderM_${(1000..9999).random()}"
                     val password = config?.preSharedKey ?: ""
+                    currentSsid = ssid
+                    currentPassword = password
 
                     // The hotspot interface gets its address a moment after onStarted;
                     // resolve the REAL IP instead of assuming the standard gateway.
                     resolveHotspotIp { ip ->
+                        currentIp = ip
                         onSuccess(ssid, password, ip)
                     }
                 }
@@ -49,11 +76,13 @@ object HotspotManager {
                 override fun onStopped() {
                     super.onStopped()
                     reservation = null
+                    clearCurrentDetails()
                 }
 
                 override fun onFailed(reason: Int) {
                     super.onFailed(reason)
                     reservation = null
+                    clearCurrentDetails()
                     Handler(Looper.getMainLooper()).post {
                         onError("Hotspot start failed (code: $reason)")
                     }
@@ -83,5 +112,6 @@ object HotspotManager {
             reservation?.close()
             reservation = null
         } catch (_: Exception) {}
+        clearCurrentDetails()
     }
 }
