@@ -134,21 +134,27 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             // Active session (Xender-style): send straight to the connected
-            // peer — no QR scan or reconnect needed.
+            // peer — no QR scan or reconnect needed. But only while the
+            // session is actually usable: a stale session (peer gone, hotspot
+            // closed on the other side) must never trap this button. The
+            // peer is verified with a /ping before uploading; if the session
+            // has ended we clear it and fall back to the QR scan.
             val sessionPeerIp = SessionManager.peerIp
             if (SessionManager.active && !sessionPeerIp.isNullOrEmpty()) {
-                startUploadStream("http://$sessionPeerIp:${TransferReceiverService.PORT}/upload")
+                val sessionUsable = if (SessionManager.isHotspotOwner) {
+                    HotspotManager.isRunning
+                } else {
+                    WifiAutoConnector.boundNetwork != null
+                }
+                if (sessionUsable) {
+                    sendToSessionPeer(sessionPeerIp)
+                } else {
+                    SessionManager.clear()
+                    launchQrScanFlow()
+                }
                 return@setOnClickListener
             }
-            NetworkRequirements.ensureSender(this) {
-                val options = ScanOptions().apply {
-                    setPrompt("Scan receiver QR code")
-                    setBeepEnabled(true)
-                    setOrientationLocked(true)
-                    captureActivity = com.journeyapps.barcodescanner.CaptureActivity::class.java
-                }
-                qrScannerLauncher.launch(options)
-            }
+            launchQrScanFlow()
         }
 
         btnReceive.setOnClickListener {
@@ -166,6 +172,61 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleSendToPeerIntent(intent)
+    }
+
+    /** The QR-scan send flow — used by the plain Send path and as the
+     *  fallback when a stored session turns out to be dead. */
+    private fun launchQrScanFlow() {
+        NetworkRequirements.ensureSender(this) {
+            val options = ScanOptions().apply {
+                setPrompt("Scan receiver QR code")
+                setBeepEnabled(true)
+                setOrientationLocked(true)
+                captureActivity = com.journeyapps.barcodescanner.CaptureActivity::class.java
+            }
+            qrScannerLauncher.launch(options)
+        }
+    }
+
+    /**
+     * Verify the session peer is really still there before uploading to it:
+     * a /ping over the session's own route (bound network for the joiner,
+     * plain for the hotspot owner). If the peer doesn't answer, the session
+     * is dead — clear it and fall back to scanning a fresh QR code.
+     */
+    private fun sendToSessionPeer(peerIp: String) {
+        tvStatus.text = "Checking connection to $peerIp..."
+        Thread {
+            val net = WifiAutoConnector.boundNetwork
+            val clientBuilder = httpClient.newBuilder()
+                .proxy(java.net.Proxy.NO_PROXY)
+                .connectTimeout(2500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .readTimeout(2500, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (!SessionManager.isHotspotOwner && net != null) {
+                clientBuilder.socketFactory(net.socketFactory)
+            }
+            val client = clientBuilder.build()
+            val alive = try {
+                val request = Request.Builder()
+                    .url("http://$peerIp:${TransferReceiverService.PORT}/ping")
+                    .get()
+                    .build()
+                client.newCall(request).execute().use { resp ->
+                    resp.isSuccessful && resp.body?.string()?.trim() == "PONG"
+                }
+            } catch (_: Throwable) {
+                false
+            }
+            runOnUiThread {
+                if (alive) {
+                    startUploadStream("http://$peerIp:${TransferReceiverService.PORT}/upload")
+                } else {
+                    SessionManager.clear()
+                    Toast.makeText(this, "Session ended — scan the QR code again", Toast.LENGTH_LONG).show()
+                    launchQrScanFlow()
+                }
+            }
+        }.start()
     }
 
     /** Came back from the receive screen to send files to the connected peer. */
@@ -522,6 +583,9 @@ class MainActivity : AppCompatActivity() {
                 .proxy(java.net.Proxy.NO_PROXY)
                 .build()
             else -> {
+                // No route to the peer — any stored session is dead; clear it
+                // so the next Send tap offers a fresh QR scan instead.
+                SessionManager.clear()
                 tvStatus.text = "Not connected to receiver hotspot"
                 Toast.makeText(this, "Not connected to receiver. Scan the QR code again.", Toast.LENGTH_LONG).show()
                 return
