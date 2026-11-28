@@ -89,6 +89,25 @@ class ReceiveActivity : AppCompatActivity() {
                 } else if (ssid != null && ip != null) {
                     tvStatus.text = "Hotspot: $ssid\nServer: ON — $ip:${TransferReceiverService.PORT}\nScan QR with sender to auto-connect"
                 }
+            } else if (TransferReceiverService.isServerRunning && HotspotManager.isRunning &&
+                HotspotManager.currentSsid != null && HotspotManager.currentIp != null
+            ) {
+                // A previous instance of this screen left a hotspot + server
+                // running (e.g. we went to pick files via SEND FILES and came
+                // back) — adopt them. Restarting here would close the live
+                // hotspot and drop the connected peer.
+                receiverServiceStarted = true
+                receiverSessionActive = true
+                val ssid = HotspotManager.currentSsid!!
+                val ip = HotspotManager.currentIp!!
+                lastSsid = ssid
+                lastIp = ip
+                generateQR(ssid, HotspotManager.currentPassword ?: "", ip)
+                val peerIp = SessionManager.peerIp
+                if (SessionManager.active && !peerIp.isNullOrEmpty()) {
+                    tvStatus.text = "Server: ON — $ip:${TransferReceiverService.PORT}\nConnected: $peerIp"
+                    btnSendFiles.visibility = View.VISIBLE
+                }
             } else {
                 // The HTTP receiver server must be listening BEFORE the sender can
                 // connect and upload — start it first, then bring up the hotspot.
